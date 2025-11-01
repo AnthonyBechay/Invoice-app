@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, onSnapshot, doc, updateDoc, deleteDoc, addDoc, getDocs } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
 
@@ -7,7 +7,7 @@ const InvoicesPage = ({ navigateTo }) => {
     const [cancelledInvoices, setCancelledInvoices] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
-    const [displayLimit, setDisplayLimit] = useState(20);
+    const [displayLimit, setDisplayLimit] = useState(30);
     const [showCancelledModal, setShowCancelledModal] = useState(false);
     const [confirmCancel, setConfirmCancel] = useState(null);
     const [showPaymentRefundModal, setShowPaymentRefundModal] = useState(false);
@@ -51,6 +51,24 @@ const InvoicesPage = ({ navigateTo }) => {
             const activeDocs = [];
             const cancelledDocs = [];
             
+            // Helper function to get payment status (defined before sorting)
+            const getPaymentStatus = (invoice) => {
+                const totalPaid = invoice.totalPaid || 0;
+                const total = invoice.total || 0;
+
+                if (totalPaid >= total) {
+                    return { status: 'paid', label: 'Paid', color: 'bg-green-100 text-green-800' };
+                } else if (totalPaid > 0) {
+                    return { status: 'partial', label: `Partial ($${totalPaid.toFixed(2)})`, color: 'bg-yellow-100 text-yellow-800' };
+                } else {
+                    const daysSinceIssued = Math.floor((new Date() - invoice.date.toDate()) / (1000 * 60 * 60 * 24));
+                    if (daysSinceIssued > 30) {
+                        return { status: 'overdue', label: 'Overdue', color: 'bg-red-100 text-red-800' };
+                    }
+                    return { status: 'unpaid', label: 'Unpaid', color: 'bg-gray-100 text-gray-800' };
+                }
+            };
+
             querySnapshot.forEach((doc) => {
                 const data = { id: doc.id, ...doc.data() };
                 
@@ -61,8 +79,27 @@ const InvoicesPage = ({ navigateTo }) => {
                 }
             });
             
-            // Sort by creation date (newest first)
+            // Sort by payment status first (unpaid, partial, paid), then by date (newest first)
             activeDocs.sort((a, b) => {
+                const statusA = getPaymentStatus(a);
+                const statusB = getPaymentStatus(b);
+                
+                // Define priority: unpaid (0) < partial (1) < paid (2)
+                const getStatusPriority = (status) => {
+                    if (status.status === 'unpaid' || status.status === 'overdue') return 0;
+                    if (status.status === 'partial') return 1;
+                    return 2; // paid
+                };
+                
+                const priorityA = getStatusPriority(statusA);
+                const priorityB = getStatusPriority(statusB);
+                
+                // If different priorities, sort by priority
+                if (priorityA !== priorityB) {
+                    return priorityA - priorityB;
+                }
+                
+                // If same priority, sort by date (newest first)
                 const dateA = a.date?.toDate ? a.date.toDate() : new Date(a.date);
                 const dateB = b.date?.toDate ? b.date.toDate() : new Date(b.date);
                 return dateB - dateA;
@@ -366,13 +403,21 @@ const InvoicesPage = ({ navigateTo }) => {
         );
     });
 
-    // If searching, show all results; otherwise limit to displayLimit (default 20)
+    // If searching, show all results; otherwise limit to displayLimit (default 30)
     const displayedInvoices = searchQuery ? filteredInvoices : filteredInvoices.slice(0, displayLimit);
 
-    // Calculate statistics
-    const totalAmount = displayedInvoices.reduce((sum, doc) => sum + doc.total, 0);
-    const totalPaidAmount = displayedInvoices.reduce((sum, doc) => sum + (doc.totalPaid || 0), 0);
-    const totalUnpaidAmount = totalAmount - totalPaidAmount;
+    // Calculate only unpaid amount (optimized with useMemo to prevent recalculation)
+    // Note: For scalability with thousands of invoices, consider:
+    // - Moving this calculation to a Cloud Function that updates periodically
+    // - Or using Firestore aggregation queries (requires composite indexes)
+    // - Or maintaining a separate "totals" document that gets updated on invoice changes
+    const totalUnpaidAmount = useMemo(() => {
+        return invoices.reduce((sum, doc) => {
+            const totalPaid = doc.totalPaid || 0;
+            const unpaid = Math.max(0, (doc.total || 0) - totalPaid);
+            return sum + unpaid;
+        }, 0);
+    }, [invoices]);
 
     return (
         <div>
@@ -402,19 +447,11 @@ const InvoicesPage = ({ navigateTo }) => {
                 />
             </div>
 
-            {/* Payment Summary */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div className="bg-green-50 p-4 rounded-lg">
-                    <p className="text-sm text-green-600">Total Paid</p>
-                    <p className="text-2xl font-bold text-green-800">${totalPaidAmount.toFixed(2)}</p>
-                </div>
+            {/* Payment Summary - Only show unpaid */}
+            <div className="grid grid-cols-1 md:grid-cols-1 gap-4 mb-6">
                 <div className="bg-red-50 p-4 rounded-lg">
-                    <p className="text-sm text-red-600">Outstanding</p>
+                    <p className="text-sm text-red-600">Total Outstanding (Unpaid)</p>
                     <p className="text-2xl font-bold text-red-800">${totalUnpaidAmount.toFixed(2)}</p>
-                </div>
-                <div className="bg-blue-50 p-4 rounded-lg">
-                    <p className="text-sm text-blue-600">Total Invoiced</p>
-                    <p className="text-2xl font-bold text-blue-800">${totalAmount.toFixed(2)}</p>
                 </div>
             </div>
 
@@ -496,7 +533,7 @@ const InvoicesPage = ({ navigateTo }) => {
                 {!searchQuery && filteredInvoices.length > displayLimit && (
                     <div className="mt-4 text-center">
                         <button
-                            onClick={() => setDisplayLimit(prev => prev + 20)}
+                            onClick={() => setDisplayLimit(prev => prev + 30)}
                             className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-lg transition-colors"
                         >
                             Load More Invoices ({filteredInvoices.length - displayLimit} remaining)

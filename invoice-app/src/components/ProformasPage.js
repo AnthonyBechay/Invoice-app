@@ -16,6 +16,7 @@ const ProformasPage = ({ navigateTo }) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [displayLimit, setDisplayLimit] = useState(20);
     const [confirmDelete, setConfirmDelete] = useState(null);
+    const [convertingIds, setConvertingIds] = useState(new Set()); // Track converting proformas
 
     useEffect(() => {
         if (!auth.currentUser) return;
@@ -114,6 +115,15 @@ const ProformasPage = ({ navigateTo }) => {
     const handleConvertToInvoice = async (proforma) => {
         if (!auth.currentUser) return;
 
+        // Prevent double click
+        if (convertingIds.has(proforma.id)) {
+            console.log('Conversion already in progress for this proforma');
+            return;
+        }
+
+        // Add to converting set
+        setConvertingIds(prev => new Set(prev).add(proforma.id));
+
         try {
             // Get next invoice number
             const year = new Date().getFullYear();
@@ -168,6 +178,12 @@ const ProformasPage = ({ navigateTo }) => {
         } catch (error) {
             console.error("Error converting proforma to invoice: ", error);
             alert('Error converting proforma to invoice. Please try again.');
+            // Remove from converting set on error
+            setConvertingIds(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(proforma.id);
+                return newSet;
+            });
         }
     };
 
@@ -252,12 +268,6 @@ const ProformasPage = ({ navigateTo }) => {
                         className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors"
                     >
                         Cancelled ({deletedProformas.length})
-                    </button>
-                    <button 
-                        onClick={handleOpenHistoryModal} 
-                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-md"
-                    >
-                        Invoice History
                     </button>
                 </div>
             </div>
@@ -346,10 +356,11 @@ const ProformasPage = ({ navigateTo }) => {
                                                 </button>
                                                 <button
                                                     onClick={() => handleConvertToInvoice(doc)}
-                                                    className="text-green-600 hover:text-green-800 font-medium py-1 px-2 rounded-lg text-sm"
+                                                    disabled={convertingIds.has(doc.id)}
+                                                    className="text-green-600 hover:text-green-800 font-medium py-1 px-2 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                                                     title="Convert to Invoice"
                                                 >
-                                                    Convert
+                                                    {convertingIds.has(doc.id) ? 'Converting...' : 'Convert'}
                                                 </button>
                                                 <button
                                                     onClick={() => setConfirmDelete(doc.id)}

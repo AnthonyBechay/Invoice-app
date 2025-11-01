@@ -6,6 +6,7 @@ import { COMPANY_INFO } from '../config';
 const ViewDocumentPage = ({ documentToView, navigateTo }) => {
     const printRef = useRef();
     const [userSettings, setUserSettings] = useState(null);
+    const [isConverting, setIsConverting] = useState(false);
 
     useEffect(() => {
         if (documentToView) {
@@ -61,6 +62,14 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
     const handleConvertToInvoice = async () => {
         if (!auth.currentUser || documentToView.type !== 'proforma') return;
         
+        // Prevent double click
+        if (isConverting) {
+            console.log('Conversion already in progress');
+            return;
+        }
+
+        setIsConverting(true);
+        
         try {
             // Get next invoice number
             const year = new Date().getFullYear();
@@ -105,6 +114,7 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
         } catch (error) {
             console.error("Error converting proforma to invoice: ", error);
             alert('Error converting proforma to invoice. Please try again.');
+            setIsConverting(false);
         }
     };
 
@@ -156,10 +166,11 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
                 <div className="space-x-3">
                     {type === 'proforma' && !documentToView.converted && (
                         <button 
-                            onClick={handleConvertToInvoice} 
-                            className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200"
+                            onClick={handleConvertToInvoice}
+                            disabled={isConverting}
+                            className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            Convert to Invoice
+                            {isConverting ? 'Converting...' : 'Convert to Invoice'}
                         </button>
                     )}
                     <button onClick={handlePrint} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200">

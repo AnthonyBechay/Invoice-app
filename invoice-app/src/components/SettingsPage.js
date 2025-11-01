@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, query, where, getDocs, deleteDoc, writeBatch, limit } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { updateProfile, updateEmail, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 import { auth, db, storage } from '../firebase/config';
@@ -279,6 +279,108 @@ const SettingsPage = () => {
         }
     };
 
+    const handleCleanupDatabase = async () => {
+        if (!auth.currentUser) return;
+        
+        if (!window.confirm('This will permanently delete all cancelled invoices and deleted proformas. This action cannot be undone. Continue?')) {
+            return;
+        }
+
+        setLoading(true);
+        setFeedback({ type: '', message: '' });
+
+        try {
+            const userId = auth.currentUser.uid;
+            let deletedInvoices = 0;
+            let deletedProformas = 0;
+            let errors = [];
+
+            // Helper function to delete documents in batches (Firestore batch limit is 500)
+            const deleteInBatches = async (querySnapshot, type) => {
+                let deletedCount = 0;
+                let currentBatch = writeBatch(db);
+                let batchCount = 0;
+                
+                for (const docSnap of querySnapshot.docs) {
+                    currentBatch.delete(doc(db, `documents/${userId}/userDocuments`, docSnap.id));
+                    batchCount++;
+                    deletedCount++;
+                    
+                    // Commit batch when reaching limit (500) or at end
+                    if (batchCount >= 500) {
+                        await currentBatch.commit();
+                        currentBatch = writeBatch(db);
+                        batchCount = 0;
+                    }
+                }
+                
+                // Commit remaining documents in the last batch
+                if (batchCount > 0) {
+                    await currentBatch.commit();
+                }
+                
+                return deletedCount;
+            };
+
+            // Cleanup cancelled invoices
+            try {
+                const invoicesQuery = query(
+                    collection(db, `documents/${userId}/userDocuments`),
+                    where('type', '==', 'invoice'),
+                    where('cancelled', '==', true)
+                );
+                const invoicesSnapshot = await getDocs(invoicesQuery);
+                deletedInvoices = await deleteInBatches(invoicesSnapshot, 'invoice');
+            } catch (error) {
+                console.error('Error cleaning invoices:', error);
+                errors.push(`Error cleaning invoices: ${error.message}`);
+            }
+
+            // Cleanup deleted proformas
+            try {
+                const proformasQuery = query(
+                    collection(db, `documents/${userId}/userDocuments`),
+                    where('type', '==', 'proforma'),
+                    where('deleted', '==', true)
+                );
+                const proformasSnapshot = await getDocs(proformasQuery);
+                deletedProformas += await deleteInBatches(proformasSnapshot, 'proforma');
+            } catch (error) {
+                console.error('Error cleaning proformas:', error);
+                errors.push(`Error cleaning proformas: ${error.message}`);
+            }
+
+            // Cleanup cancelled proformas (marked as cancelled instead of deleted)
+            try {
+                const cancelledProformasQuery = query(
+                    collection(db, `documents/${userId}/userDocuments`),
+                    where('type', '==', 'proforma'),
+                    where('cancelled', '==', true)
+                );
+                const cancelledProformasSnapshot = await getDocs(cancelledProformasQuery);
+                deletedProformas += await deleteInBatches(cancelledProformasSnapshot, 'cancelled proforma');
+            } catch (error) {
+                console.error('Error cleaning cancelled proformas:', error);
+                errors.push(`Error cleaning cancelled proformas: ${error.message}`);
+            }
+
+            const totalDeleted = deletedInvoices + deletedProformas;
+            const message = totalDeleted > 0 
+                ? `Cleanup completed! Deleted ${deletedInvoices} cancelled invoice(s) and ${deletedProformas} deleted proforma(s).${errors.length > 0 ? ' Warnings: ' + errors.join('; ') : ''}`
+                : 'No deleted items found to clean up.';
+
+            setFeedback({
+                type: totalDeleted > 0 ? 'success' : 'info',
+                message: message
+            });
+        } catch (error) {
+            console.error('Cleanup error:', error);
+            setFeedback({ type: 'error', message: `Cleanup failed: ${error.message}` });
+        } finally {
+            setLoading(false);
+        }
+    };
+
     if (loading && !companyName) { // Check !companyName to avoid flicker on save
         return <p>Loading settings...</p>;
     }
@@ -552,6 +654,39 @@ const SettingsPage = () => {
                             </button>
                             <p className="text-xs text-gray-500 mt-2">
                                 This will scan all payments and ensure they're properly associated with your user account.
+                            </p>
+                        </div>
+
+                        <div className="border-b border-gray-200 pb-6">
+                            <h3 className="text-lg font-medium text-gray-900 mb-4">Database Cleanup</h3>
+                            <p className="text-sm text-gray-600 mb-4">
+                                Permanently delete all cancelled invoices and deleted proformas from your database. 
+                                This will free up storage space and improve performance. Only deleted/cancelled items will be removed.
+                            </p>
+                            <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-4">
+                                <div className="flex">
+                                    <div className="flex-shrink-0">
+                                        <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                                        </svg>
+                                    </div>
+                                    <div className="ml-3">
+                                        <p className="text-sm text-red-700">
+                                            <strong>Warning:</strong> This action is permanent and cannot be undone. 
+                                            Make sure you don't need any of the deleted items before proceeding.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                            <button
+                                onClick={handleCleanupDatabase}
+                                disabled={loading}
+                                className="bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-md disabled:bg-red-300"
+                            >
+                                {loading ? 'Cleaning up...' : 'Clean Up Deleted Items'}
+                            </button>
+                            <p className="text-xs text-gray-500 mt-2">
+                                This will remove all cancelled invoices and deleted proformas from your database.
                             </p>
                         </div>
 
