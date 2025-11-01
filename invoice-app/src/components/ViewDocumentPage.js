@@ -37,25 +37,55 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
         fetchUserSettings();
     }, []);
 
+    const handleShare = async () => {
+        // Check if iOS and in standalone mode (Add to Home Screen)
+        const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+        const isStandalone = window.navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+        
+        if (isIOS && isStandalone && navigator.share && printRef.current) {
+            try {
+                // Try to share the document content
+                // First, scroll to the print area to ensure it's visible
+                if (printRef.current) {
+                    printRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+                
+                // Get the document title
+                const { type, documentNumber, client } = documentToView;
+                const title = `${type}-${documentNumber}-${client.name}`;
+                
+                // Try to share with Web Share API
+                // Note: iOS Share API might not support HTML directly, so we'll provide text/URL
+                const shareData = {
+                    title: title,
+                    text: `${type} ${documentNumber} for ${client.name}`,
+                    url: window.location.href
+                };
+                
+                await navigator.share(shareData);
+            } catch (error) {
+                // User cancelled or share failed
+                if (error.name !== 'AbortError') {
+                    console.error('Share error:', error);
+                    // Fallback to print
+                    handlePrint();
+                }
+            }
+        } else {
+            // Fallback to print for non-iOS or if Share API not available
+            handlePrint();
+        }
+    };
+
     const handlePrint = () => {
         // Check if iOS and in standalone mode (Add to Home Screen)
         const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
         const isStandalone = window.navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
         
         if (isIOS && isStandalone) {
-            // iOS standalone mode - window.print() doesn't work
-            // Use Share API if available, otherwise show instructions
-            if (navigator.share && printRef.current) {
-                // Try to share as text/html or provide download
-                // For iOS, best option is to guide user to use Safari's share
-                alert('On iOS: Use the Share button (square with arrow) at the bottom of your screen and select "Save to Files" or "Print" to save as PDF.');
-            } else {
-                // Fallback: scroll to top and show instructions
-                if (printRef.current) {
-                    printRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    alert('On iOS Add to Home Screen: Use the Share button (square with arrow) at the bottom of your screen and select "Save to Files" or "Print" to save as PDF.\n\nAlternatively, open this page in Safari and use File > Print > Save as PDF.');
-                }
-            }
+            // iOS standalone mode - window.print() doesn't work well
+            // Show instructions to use Share button we just added
+            alert('On iOS: Please use the "Share" button above to save as PDF. Tap Share, then select "Save to Files" or use the Print option.');
             return;
         }
         
@@ -187,9 +217,19 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
                                 {isConverting ? 'Converting...' : 'Convert to Invoice'}
                             </button>
                         )}
-                        <button onClick={handlePrint} className="flex-1 sm:flex-none bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 sm:px-4 rounded-lg transition-colors duration-200 text-sm sm:text-base">
-                            Print / Save PDF
-                        </button>
+                        {/* Show Share button for iOS standalone mode, otherwise show Print */}
+                        {(window.navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)) && navigator.share ? (
+                            <button onClick={handleShare} className="flex-1 sm:flex-none bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 sm:px-4 rounded-lg transition-colors duration-200 text-sm sm:text-base flex items-center justify-center gap-2">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                                </svg>
+                                Share / Save PDF
+                            </button>
+                        ) : (
+                            <button onClick={handlePrint} className="flex-1 sm:flex-none bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 sm:px-4 rounded-lg transition-colors duration-200 text-sm sm:text-base">
+                                Print / Save PDF
+                            </button>
+                        )}
                         <button onClick={() => navigateTo(documentToView.type === 'invoice' ? 'invoices' : 'proformas')} className="flex-1 sm:flex-none bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-3 sm:px-4 rounded-lg transition-colors duration-200 text-sm sm:text-base">
                             Back
                         </button>
