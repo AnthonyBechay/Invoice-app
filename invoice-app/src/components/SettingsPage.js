@@ -174,15 +174,42 @@ const SettingsPage = () => {
         setLoading(true);
         setFeedback({ type: '', message: '' });
 
+        // Check if email actually changed
+        if (userEmail === auth.currentUser.email) {
+            setFeedback({ type: 'info', message: 'Email is already set to this value.' });
+            setLoading(false);
+            return;
+        }
+
         try {
+            // Re-authenticate before updating email (Firebase requires this)
+            if (!currentPassword) {
+                setFeedback({ type: 'error', message: 'Please enter your current password to change email.' });
+                setLoading(false);
+                return;
+            }
+
+            // Re-authenticate the user
+            const credential = EmailAuthProvider.credential(auth.currentUser.email, currentPassword);
+            await reauthenticateWithCredential(auth.currentUser, credential);
+            
+            // Now update the email
             await updateEmail(auth.currentUser, userEmail);
             setFeedback({ type: 'success', message: 'Email updated successfully!' });
+            // Clear password field after successful update
+            setCurrentPassword('');
         } catch (error) {
             console.error("Error updating email:", error);
             if (error.code === 'auth/requires-recent-login') {
-                setFeedback({ type: 'error', message: 'Please re-authenticate to change email. Try logging out and back in.' });
+                setFeedback({ type: 'error', message: 'Please re-authenticate to change email. Enter your current password and try again.' });
+            } else if (error.code === 'auth/wrong-password') {
+                setFeedback({ type: 'error', message: 'Current password is incorrect.' });
+            } else if (error.code === 'auth/email-already-in-use') {
+                setFeedback({ type: 'error', message: 'This email is already in use by another account.' });
+            } else if (error.code === 'auth/invalid-email') {
+                setFeedback({ type: 'error', message: 'Please enter a valid email address.' });
             } else {
-                setFeedback({ type: 'error', message: 'Failed to update email.' });
+                setFeedback({ type: 'error', message: `Failed to update email: ${error.message}` });
             }
         } finally {
             setLoading(false);
@@ -421,13 +448,25 @@ const SettingsPage = () => {
                                     />
                                 </div>
                                 <div>
+                                    <label htmlFor="currentPasswordForEmail" className="block text-sm font-medium text-gray-700 mb-1">Current Password (Required for email change)</label>
+                                    <input
+                                        type="password"
+                                        id="currentPasswordForEmail"
+                                        value={currentPassword}
+                                        onChange={(e) => setCurrentPassword(e.target.value)}
+                                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                                        placeholder="Enter your current password"
+                                    />
+                                </div>
+                                <div>
                                     <button
                                         onClick={handleUpdateEmail}
-                                        disabled={loading}
-                                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-md disabled:bg-indigo-300"
+                                        disabled={loading || !currentPassword}
+                                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-md disabled:bg-indigo-300 disabled:cursor-not-allowed"
                                     >
                                         {loading ? 'Updating...' : 'Update Email'}
                                     </button>
+                                    <p className="text-xs text-gray-500 mt-2">You need to enter your current password to change your email address.</p>
                                 </div>
                             </div>
                         </div>

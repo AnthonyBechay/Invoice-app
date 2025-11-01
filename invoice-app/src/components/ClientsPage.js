@@ -31,6 +31,7 @@ const ClientsPage = () => {
     const [newClient, setNewClient] = useState({ name: '', email: '', phone: '', location: '', vatNumber: '' });
     const [editingClient, setEditingClient] = useState(null);
     const fileInputRef = useRef(null);
+    const [isSubmitting, setIsSubmitting] = useState(false); // Prevent double submission
 
     useEffect(() => {
         if (!auth.currentUser) return;
@@ -54,6 +55,15 @@ const ClientsPage = () => {
     const handleSaveClient = async (e) => {
         e.preventDefault();
         if (!auth.currentUser) return;
+
+        // Prevent double submission
+        if (isSubmitting) {
+            console.log('Client submission already in progress, ignoring duplicate request');
+            return;
+        }
+
+        setIsSubmitting(true);
+
         try {
             if (editingClient) {
                 const clientRef = doc(db, `clients/${auth.currentUser.uid}/userClients`, editingClient.id);
@@ -65,6 +75,9 @@ const ClientsPage = () => {
             resetForm();
         } catch (error) {
             console.error("Error saving client: ", error);
+            alert('Error saving client. Please try again.');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -177,7 +190,9 @@ const ClientsPage = () => {
                             <input type="text" name="vatNumber" value={newClient.vatNumber} onChange={handleInputChange} placeholder="VAT Number" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" />
                         </div>
                         <div className="mt-4 flex justify-end">
-                            <button type="submit" className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg">Save Client</button>
+                            <button type="submit" disabled={isSubmitting} className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed">
+                                {isSubmitting ? 'Saving...' : 'Save Client'}
+                            </button>
                         </div>
                     </form>
                 </div>

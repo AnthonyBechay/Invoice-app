@@ -5,12 +5,12 @@ import { auth, db } from '../firebase/config';
 const AccountingPage = () => {
     const [documents, setDocuments] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [filterPeriod, setFilterPeriod] = useState('thisMonth'); // 'allTime', 'ytd', 'thisMonth', 'lastMonth', 'custom'
+    const [filterPeriod, setFilterPeriod] = useState('allTime'); // 'allTime', 'ytd', 'thisMonth', 'lastMonth', 'custom'
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
     const [categoryFilter, setCategoryFilter] = useState('all'); // 'all', 'labor', 'items'
     const [clientFilter, setClientFilter] = useState('all'); // 'all' or client id
-    const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'paid', 'unpaid', 'overdue'
+    const [statusFilter, setStatusFilter] = useState('unpaid'); // 'all', 'paid', 'unpaid', 'overdue'
     const [documentTypeFilter, setDocumentTypeFilter] = useState('invoice'); // 'all', 'invoice', 'proforma' - Default to 'invoice'
  // 'include', 'exclude', 'only'
     const [sortColumn, setSortColumn] = useState('date'); // Column to sort by

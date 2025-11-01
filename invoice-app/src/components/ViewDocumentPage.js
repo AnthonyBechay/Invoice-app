@@ -37,7 +37,25 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
     }, []);
 
     const handlePrint = () => {
-        window.print();
+        // Check if mobile device
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        
+        if (isMobile) {
+            // On mobile, try to use print dialog
+            // If print dialog doesn't work, fall back to a readable view
+            try {
+                window.print();
+            } catch (error) {
+                // Fallback: scroll to top and highlight print area
+                if (printRef.current) {
+                    printRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    // Show a message to use browser's share/print option
+                    alert('On mobile: Use your browser\'s Share button and select "Save as PDF" or use the Print option');
+                }
+            }
+        } else {
+            window.print();
+        }
     };
 
     const handleConvertToInvoice = async () => {

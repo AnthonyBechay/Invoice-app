@@ -49,6 +49,7 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
     const [documentDate, setDocumentDate] = useState(new Date().toISOString().split('T')[0]); // Add editable date
     const [pageTitle, setPageTitle] = useState('Create New Document');
     const [mode, setMode] = useState('create'); // 'create', 'edit'
+    const [isSubmitting, setIsSubmitting] = useState(false); // Prevent double submission
 
     const fetchInitialData = useCallback(async () => {
         if (!auth.currentUser) return;
@@ -162,6 +163,14 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
         }
         if (!auth.currentUser) return;
 
+        // Prevent double submission
+        if (isSubmitting) {
+            console.log('Document submission already in progress, ignoring duplicate request');
+            return;
+        }
+
+        setIsSubmitting(true);
+
         const clientData = clients.find(c => c.id === selectedClient);
         const documentData = {
             client: clientData,
@@ -189,6 +198,8 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
             }
         } catch (error) {
             console.error("Error saving document: ", error);
+            alert('Error saving document. Please try again.');
+            setIsSubmitting(false);
         }
     };
 
@@ -561,10 +572,11 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
                         Cancel
                     </button>
                     <button 
-                        onClick={handleSaveDocument} 
-                        className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-6 rounded-lg transition-colors"
+                        onClick={handleSaveDocument}
+                        disabled={isSubmitting}
+                        className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                        {mode === 'edit' ? 'Update' : 'Save'} {docType === 'proforma' ? 'Proforma' : 'Invoice'}
+                        {isSubmitting ? 'Saving...' : (mode === 'edit' ? 'Update' : 'Save')} {docType === 'proforma' ? 'Proforma' : 'Invoice'}
                     </button>
                 </div>
             </div>

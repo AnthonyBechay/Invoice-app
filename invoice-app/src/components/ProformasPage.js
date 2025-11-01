@@ -242,6 +242,12 @@ const ProformasPage = ({ navigateTo }) => {
                 <h1 className="text-3xl font-bold text-gray-800">Proformas</h1>
                 <div className="flex gap-2">
                     <button 
+                        onClick={() => navigateTo('newDocument')} 
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-transform transform hover:scale-105"
+                    >
+                        + Add New Document
+                    </button>
+                    <button 
                         onClick={() => setShowDeletedModal(true)} 
                         className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors"
                     >

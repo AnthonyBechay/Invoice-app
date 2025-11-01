@@ -46,6 +46,7 @@ const StockPage = () => {
     const [editingItem, setEditingItem] = useState(null); // To hold the item being edited
     const fileInputRef = useRef(null);
     const [importLoading, setImportLoading] = useState(false); // Loading state for CSV import
+    const [isSubmitting, setIsSubmitting] = useState(false); // Prevent double submission
 
     useEffect(() => {
         if (!auth.currentUser) return;
@@ -71,6 +72,14 @@ const StockPage = () => {
         e.preventDefault();
         if (!auth.currentUser) return;
 
+        // Prevent double submission
+        if (isSubmitting) {
+            console.log('Item submission already in progress, ignoring duplicate request');
+            return;
+        }
+
+        setIsSubmitting(true);
+
         const itemData = {
             ...newItem,
             buyingPrice: parseFloat(newItem.buyingPrice) || 0,
@@ -92,6 +101,9 @@ const StockPage = () => {
             resetForm();
         } catch (error) {
             console.error("Error saving item: ", error);
+            alert('Error saving item. Please try again.');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -275,7 +287,9 @@ const StockPage = () => {
                             ))}
                         </div>
                         <div className="mt-4 flex justify-end">
-                            <button type="submit" className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg">Save Item</button>
+                            <button type="submit" disabled={isSubmitting} className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed">
+                                {isSubmitting ? 'Saving...' : 'Save Item'}
+                            </button>
                         </div>
                     </form>
                 </div>
