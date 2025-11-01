@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, query, onSnapshot, addDoc, updateDoc, deleteDoc, doc, runTransaction, writeBatch } from 'firebase/firestore';
+import { collection, query, onSnapshot, addDoc, updateDoc, deleteDoc, doc, runTransaction, writeBatch, getDocs, where } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
 import Papa from 'papaparse';
 
@@ -68,6 +68,57 @@ const ClientsPage = () => {
             if (editingClient) {
                 const clientRef = doc(db, `clients/${auth.currentUser.uid}/userClients`, editingClient.id);
                 await updateDoc(clientRef, newClient);
+                
+                // Update all existing documents (invoices and proformas) that reference this client
+                // This ensures client name/details changes reflect in existing documents
+                try {
+                    const documentsQuery = query(
+                        collection(db, `documents/${auth.currentUser.uid}/userDocuments`),
+                        where('client.id', '==', editingClient.id)
+                    );
+                    const documentsSnapshot = await getDocs(documentsQuery);
+                    
+                    if (documentsSnapshot.docs.length > 0) {
+                        // Use batch writes to update multiple documents (max 500 per batch)
+                        let batch = writeBatch(db);
+                        let batchCount = 0;
+                        let totalUpdated = 0;
+                        
+                        for (const docSnap of documentsSnapshot.docs) {
+                            // Update the client object in the document with new client data
+                            batch.update(docSnap.ref, {
+                                'client': {
+                                    id: editingClient.id,
+                                    name: newClient.name,
+                                    email: newClient.email || '',
+                                    phone: newClient.phone || '',
+                                    location: newClient.location || '',
+                                    vatNumber: newClient.vatNumber || ''
+                                }
+                            });
+                            batchCount++;
+                            totalUpdated++;
+                            
+                            // Firestore batch limit is 500, commit and create new batch if needed
+                            if (batchCount >= 500) {
+                                await batch.commit();
+                                batch = writeBatch(db);
+                                batchCount = 0;
+                            }
+                        }
+                        
+                        // Commit remaining documents in the last batch
+                        if (batchCount > 0) {
+                            await batch.commit();
+                        }
+                        
+                        console.log(`Updated client details in ${totalUpdated} document(s)`);
+                    }
+                } catch (updateError) {
+                    console.error("Error updating documents with new client data:", updateError);
+                    // Don't fail the entire operation if document update fails
+                    alert('Client updated, but some documents may not reflect the changes. Please try again.');
+                }
             } else {
                 const newClientId = await getNextClientId(auth.currentUser.uid);
                 await addDoc(collection(db, `clients/${auth.currentUser.uid}/userClients`), { ...newClient, clientId: newClientId });

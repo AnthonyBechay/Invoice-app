@@ -161,41 +161,43 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
                 }
                 `}
             </style>
-            <div className="no-print flex justify-between items-center mb-6">
-                <h1 className="text-3xl font-bold text-gray-800">View Document</h1>
-                <div className="space-x-3">
-                    {type === 'proforma' && !documentToView.converted && (
-                        <button 
-                            onClick={handleConvertToInvoice}
-                            disabled={isConverting}
-                            className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            {isConverting ? 'Converting...' : 'Convert to Invoice'}
+            <div className="no-print mb-6">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+                    <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">View Document</h1>
+                    <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                        {type === 'proforma' && !documentToView.converted && (
+                            <button 
+                                onClick={handleConvertToInvoice}
+                                disabled={isConverting}
+                                className="flex-1 sm:flex-none bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-3 sm:px-4 rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
+                            >
+                                {isConverting ? 'Converting...' : 'Convert to Invoice'}
+                            </button>
+                        )}
+                        <button onClick={handlePrint} className="flex-1 sm:flex-none bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 sm:px-4 rounded-lg transition-colors duration-200 text-sm sm:text-base">
+                            Print / Save PDF
                         </button>
-                    )}
-                    <button onClick={handlePrint} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200">
-                        Print / Save PDF
-                    </button>
-                    <button onClick={() => navigateTo('dashboard')} className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200">
-                        Back to Dashboard
-                    </button>
+                        <button onClick={() => navigateTo('dashboard')} className="flex-1 sm:flex-none bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-3 sm:px-4 rounded-lg transition-colors duration-200 text-sm sm:text-base">
+                            Back
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            <div ref={printRef} className="print-area bg-white p-8 md:p-12 rounded-lg shadow-lg">
+            <div ref={printRef} className="print-area bg-white p-4 sm:p-8 md:p-12 rounded-lg shadow-lg">
                 {/* --- Header --- */}
-                <header className="flex justify-between items-center pb-4 border-b-2 border-gray-200">
+                <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-4 border-b-2 border-gray-200 gap-4">
                     <div>
                         {companyInfo.logo}
                     </div>
-                    <div className="text-right">
-                        <h1 className="text-2xl font-bold uppercase text-gray-800">{type}</h1>
+                    <div className="text-left sm:text-right w-full sm:w-auto">
+                        <h1 className="text-xl sm:text-2xl font-bold uppercase text-gray-800">{type}</h1>
                         <p className="text-gray-500 text-sm">{documentNumber}</p>
                     </div>
                 </header>
 
                 {/* --- Details --- */}
-                <section className="grid grid-cols-2 gap-4 my-4">
+                <section className="grid grid-cols-1 sm:grid-cols-2 gap-4 my-4">
                     <div>
                         <h3 className="text-xs font-semibold text-gray-500 uppercase mb-1">Billed To</h3>
                         <p className="font-bold text-gray-800 text-sm">{client.name}</p>
@@ -204,7 +206,7 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
                         <p className="text-gray-600 text-xs">{client.phone || client.phoneNumber}</p>
                         {client.vatNumber && <p className="text-gray-600 text-xs">VAT: {client.vatNumber}</p>}
                     </div>
-                    <div className="text-right">
+                    <div className="text-left sm:text-right">
                         <h3 className="text-xs font-semibold text-gray-500 uppercase mb-1">From</h3>
                         <p className="font-bold text-gray-800 text-sm">{companyInfo.name}</p>
                         <p className="text-gray-600 text-xs">{companyInfo.address}</p>
@@ -224,8 +226,8 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
 
 
                 {/* --- Items Table --- */}
-                <section className="my-4">
-                    <table className="w-full text-xs">
+                <section className="my-4 overflow-x-auto">
+                    <table className="w-full text-xs min-w-[600px]">
                         <thead className="bg-gray-100">
                             <tr>
                                 <th className="py-1 px-2 text-left text-xs font-semibold text-gray-600">Item/Part #</th>

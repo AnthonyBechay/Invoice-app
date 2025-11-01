@@ -625,17 +625,19 @@ const PaymentsPage = () => {
 
     return (
         <div className="max-w-7xl mx-auto">
-            <div className="flex justify-between items-center mb-6">
-                <h1 className="text-3xl font-bold text-gray-800">Payments</h1>
-                <div className="flex space-x-3">
-                    {migrationStatus?.migrationNeeded && (
-                        <button
-                            onClick={() => setShowMigrationModal(true)}
-                            className="bg-yellow-600 hover:bg-yellow-700 text-white font-medium py-2 px-4 rounded-lg shadow-md"
-                        >
-                            Migrate Old Payments
-                        </button>
-                    )}
+            <div className="mb-6">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Payments</h1>
+                    <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                        {migrationStatus?.migrationNeeded && (
+                            <button
+                                onClick={() => setShowMigrationModal(true)}
+                                className="flex-1 sm:flex-none bg-yellow-600 hover:bg-yellow-700 text-white font-medium py-2 px-3 sm:px-4 rounded-lg shadow-md text-sm sm:text-base"
+                            >
+                                Migrate Old Payments
+                            </button>
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -647,13 +649,13 @@ const PaymentsPage = () => {
 
             {/* Client Filter */}
             <div className="bg-white p-4 rounded-lg shadow-lg mb-6">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
-                        <label className="text-sm font-medium text-gray-700">Filter by Client:</label>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full sm:w-auto">
+                        <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Filter by Client:</label>
                         <select
                             value={clientFilter}
                             onChange={(e) => setClientFilter(e.target.value)}
-                            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            className="w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         >
                             <option value="all">All Clients</option>
                             {clients.map(client => (
@@ -661,16 +663,16 @@ const PaymentsPage = () => {
                             ))}
                         </select>
                     </div>
-                    <div className="flex space-x-2">
+                    <div className="flex flex-wrap gap-2 w-full sm:w-auto">
                         <button
                             onClick={() => setShowClientSettlement(true)}
-                            className="bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded-lg shadow-md"
+                            className="flex-1 sm:flex-none bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-3 sm:px-4 rounded-lg shadow-md text-sm sm:text-base"
                         >
                             Client Settlement
                         </button>
                         <button
                             onClick={() => setShowAddForm(true)}
-                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg shadow-md"
+                            className="flex-1 sm:flex-none bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-3 sm:px-4 rounded-lg shadow-md text-sm sm:text-base"
                         >
                             Add Payment
                         </button>
@@ -850,7 +852,7 @@ const PaymentsPage = () => {
                             />
                         </div>
 
-                        <div className="flex justify-end space-x-4">
+                        <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-4">
                             <button
                                 type="button"
                                 onClick={() => {
@@ -866,14 +868,14 @@ const PaymentsPage = () => {
                                         notes: ''
                                     });
                                 }}
-                                className="px-4 py-2 text-gray-600 bg-gray-200 rounded-md hover:bg-gray-300"
+                                className="w-full sm:w-auto px-4 py-2 text-gray-600 bg-gray-200 rounded-md hover:bg-gray-300"
                             >
                                 Cancel
                             </button>
                             <button
                                 type="submit"
                                 disabled={loading}
-                                className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:bg-indigo-300"
+                                className="w-full sm:w-auto px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:bg-indigo-300"
                             >
                                 {loading ? 'Saving...' : (editingPayment ? 'Update Payment' : 'Add Payment')}
                             </button>
@@ -993,15 +995,15 @@ const PaymentsPage = () => {
 
             {/* Payments List */}
             <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-200">
-                    <div className="flex justify-between items-center">
+                <div className="px-4 sm:px-6 py-4 border-b border-gray-200">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                         <h2 className="text-lg font-semibold text-gray-800">Payment History</h2>
                         <input
                             type="text"
                             placeholder="Search payments..."
                             value={paymentSearchTerm}
                             onChange={(e) => setPaymentSearchTerm(e.target.value)}
-                            className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 w-64"
+                            className="w-full sm:w-64 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         />
                     </div>
                 </div>
@@ -1009,14 +1011,14 @@ const PaymentsPage = () => {
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                             <tr>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Client</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Invoice</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Method</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reference</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Client</th>
+                                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Invoice</th>
+                                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Method</th>
+                                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reference</th>
+                                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
@@ -1034,23 +1036,23 @@ const PaymentsPage = () => {
                                             setShowPaymentReceipt(true);
                                         }}
                                     >
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                             {payment.paymentDate?.toDate ?
                                                 payment.paymentDate.toDate().toLocaleDateString() :
                                                 new Date(payment.paymentDate).toLocaleDateString()
                                             }
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                             {clientName}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                             <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                                                 isAllocated ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
                                             }`}>
                                                 {isAllocated ? 'Invoice Payment' : 'Client Account'}
                                             </span>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                             {docInfo ? (
                                                 <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                                                     docInfo.type === 'Invoice' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'
@@ -1061,17 +1063,17 @@ const PaymentsPage = () => {
                                                 <span className="text-gray-400">-</span>
                                             )}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">
+                                        <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">
                                             ${payment.amount.toFixed(2)}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 capitalize">
+                                        <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900 capitalize">
                                             {payment.paymentMethod.replace('_', ' ')}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                             {payment.reference || '-'}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                            <div className="flex space-x-2" onClick={(e) => e.stopPropagation()}>
+                                        <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                            <div className="flex flex-col sm:flex-row gap-1 sm:gap-2" onClick={(e) => e.stopPropagation()}>
                                                 <button
                                                     onClick={() => {
                                                         setEditingPayment(payment);
@@ -1097,13 +1099,13 @@ const PaymentsPage = () => {
                                                         });
                                                         setShowAddForm(true);
                                                     }}
-                                                    className="text-indigo-600 hover:text-indigo-900"
+                                                    className="text-indigo-600 hover:text-indigo-900 text-xs sm:text-sm px-2 py-1 rounded hover:bg-indigo-50"
                                                 >
                                                     Edit
                                                 </button>
                                                 <button
                                                     onClick={() => handleDeletePayment(payment.id, payment.documentId)}
-                                                    className="text-red-600 hover:text-red-900"
+                                                    className="text-red-600 hover:text-red-900 text-xs sm:text-sm px-2 py-1 rounded hover:bg-red-50"
                                                 >
                                                     Delete
                                                 </button>
@@ -1118,10 +1120,10 @@ const PaymentsPage = () => {
 
                 {/* Load More Button */}
                 {!paymentSearchTerm && payments.filter(p => clientFilter === 'all' || p.clientId === clientFilter).length > displayedPaymentsLimit && (
-                    <div className="px-6 py-4 border-t border-gray-200 text-center">
+                    <div className="px-4 sm:px-6 py-4 border-t border-gray-200 text-center">
                         <button
                             onClick={() => setDisplayedPaymentsLimit(prev => prev + 20)}
-                            className="px-6 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors"
+                            className="w-full sm:w-auto px-6 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm sm:text-base"
                         >
                             Load More Payments ({payments.filter(p => clientFilter === 'all' || p.clientId === clientFilter).length - displayedPaymentsLimit} remaining)
                         </button>
