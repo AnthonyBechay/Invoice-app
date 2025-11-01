@@ -132,54 +132,107 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
                 console.log('jsPDF loaded, constructor type:', typeof jsPDFConstructor);
                 
                 console.log('Capturing canvas...');
-                // Capture the print area as canvas
-                const canvas = await html2canvas(printRef.current, {
-                    scale: 2,
+                // Get the element dimensions
+                const element = printRef.current;
+                const elementWidth = element.offsetWidth || element.scrollWidth || 800; // Default width if not available
+                const elementHeight = element.offsetHeight || element.scrollHeight;
+                
+                console.log('Element dimensions:', elementWidth, 'x', elementHeight);
+                
+                // Capture the print area as canvas with proper scaling
+                const canvas = await html2canvas(element, {
+                    scale: 2, // Higher scale for better quality
                     useCORS: true,
                     logging: false,
                     backgroundColor: '#ffffff',
-                    width: printRef.current.scrollWidth,
-                    height: printRef.current.scrollHeight,
-                    windowWidth: printRef.current.scrollWidth,
-                    windowHeight: printRef.current.scrollHeight
+                    width: elementWidth,
+                    height: elementHeight,
+                    windowWidth: elementWidth,
+                    windowHeight: elementHeight,
+                    removeContainer: false,
+                    allowTaint: true,
+                    imageTimeout: 15000,
+                    onclone: (clonedDoc) => {
+                        // Ensure the cloned element maintains its styling
+                        const clonedElement = clonedDoc.querySelector('.print-area');
+                        if (clonedElement) {
+                            clonedElement.style.width = elementWidth + 'px';
+                            clonedElement.style.maxWidth = 'none';
+                            clonedElement.style.padding = getComputedStyle(element).padding;
+                        }
+                    }
                 });
                 console.log('Canvas captured:', canvas.width, 'x', canvas.height);
                 
                 // Convert canvas to image data
-                const imgData = canvas.toDataURL('image/png');
+                const imgData = canvas.toDataURL('image/png', 1.0);
                 console.log('Image data generated, length:', imgData.length);
                 
-                // Calculate PDF dimensions (A4 aspect ratio)
-                const pdfWidth = 210; // A4 width in mm
-                const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-                console.log('PDF dimensions:', pdfWidth, 'x', pdfHeight);
+                // Use standard A4 format for proper formatting
+                const a4Width = 210; // A4 width in mm
+                const a4Height = 297; // A4 height in mm
                 
-                // Create PDF instance - handle different jsPDF exports
+                // Calculate aspect ratio of the captured content
+                const contentAspectRatio = canvas.height / canvas.width;
+                const a4AspectRatio = a4Height / a4Width;
+                
+                // Determine orientation based on content
+                const isPortrait = contentAspectRatio > a4AspectRatio;
+                
+                // Calculate how to fit the content into A4
+                let imgWidth, imgHeight;
+                if (isPortrait) {
+                    // Portrait: fit to A4 width, maintain aspect ratio
+                    imgWidth = a4Width;
+                    imgHeight = imgWidth * contentAspectRatio;
+                    
+                    // If height exceeds A4, scale down to fit height
+                    if (imgHeight > a4Height) {
+                        imgHeight = a4Height;
+                        imgWidth = imgHeight / contentAspectRatio;
+                    }
+                } else {
+                    // Landscape: fit to A4 width, maintain aspect ratio
+                    imgWidth = a4Width;
+                    imgHeight = imgWidth * contentAspectRatio;
+                    
+                    // If height exceeds A4, scale down to fit height
+                    if (imgHeight > a4Height) {
+                        imgHeight = a4Height;
+                        imgWidth = imgHeight / contentAspectRatio;
+                    }
+                }
+                
+                // Calculate centering offsets (center the content on A4 page)
+                const offsetX = (a4Width - imgWidth) / 2;
+                const offsetY = (a4Height - imgHeight) / 2;
+                
+                console.log('PDF dimensions: A4', a4Width, 'x', a4Height, 'mm');
+                console.log('Image dimensions:', imgWidth, 'x', imgHeight, 'mm');
+                console.log('Offset:', offsetX, 'x', offsetY, 'mm');
+                
+                // Create PDF instance - use standard A4 format
                 let pdf;
                 if (typeof jsPDFConstructor === 'function') {
                     pdf = new jsPDFConstructor({
-                        orientation: pdfHeight > pdfWidth ? 'portrait' : 'landscape',
+                        orientation: 'portrait',
                         unit: 'mm',
-                        format: [pdfWidth, pdfHeight]
+                        format: 'a4'
                     });
                 } else if (jsPDFConstructor && typeof jsPDFConstructor.jsPDF === 'function') {
                     const JsPDF = jsPDFConstructor.jsPDF;
                     pdf = new JsPDF({
-                        orientation: pdfHeight > pdfWidth ? 'portrait' : 'landscape',
+                        orientation: 'portrait',
                         unit: 'mm',
-                        format: [pdfWidth, pdfHeight]
+                        format: 'a4'
                     });
                 } else {
                     throw new Error('jsPDF constructor not found');
                 }
                 
                 console.log('Adding image to PDF...');
-                // Add image to PDF - limit size to avoid memory issues
-                const maxHeight = 297; // A4 height in mm
-                const actualHeight = pdfHeight > maxHeight ? maxHeight : pdfHeight;
-                const actualWidth = (canvas.width * actualHeight) / canvas.height;
-                
-                pdf.addImage(imgData, 'PNG', 0, 0, actualWidth, actualHeight, undefined, 'FAST');
+                // Add image to PDF - centered on A4 page
+                pdf.addImage(imgData, 'PNG', offsetX, offsetY, imgWidth, imgHeight, undefined, 'FAST');
                 
                 console.log('Generating PDF blob...');
                 // Generate PDF blob
