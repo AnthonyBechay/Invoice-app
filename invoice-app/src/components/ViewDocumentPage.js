@@ -38,24 +38,37 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
     }, []);
 
     const handlePrint = () => {
-        // Check if mobile device
-        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        // Check if iOS and in standalone mode (Add to Home Screen)
+        const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+        const isStandalone = window.navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
         
-        if (isMobile) {
-            // On mobile, try to use print dialog
-            // If print dialog doesn't work, fall back to a readable view
-            try {
-                window.print();
-            } catch (error) {
-                // Fallback: scroll to top and highlight print area
+        if (isIOS && isStandalone) {
+            // iOS standalone mode - window.print() doesn't work
+            // Use Share API if available, otherwise show instructions
+            if (navigator.share && printRef.current) {
+                // Try to share as text/html or provide download
+                // For iOS, best option is to guide user to use Safari's share
+                alert('On iOS: Use the Share button (square with arrow) at the bottom of your screen and select "Save to Files" or "Print" to save as PDF.');
+            } else {
+                // Fallback: scroll to top and show instructions
                 if (printRef.current) {
                     printRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    // Show a message to use browser's share/print option
-                    alert('On mobile: Use your browser\'s Share button and select "Save as PDF" or use the Print option');
+                    alert('On iOS Add to Home Screen: Use the Share button (square with arrow) at the bottom of your screen and select "Save to Files" or "Print" to save as PDF.\n\nAlternatively, open this page in Safari and use File > Print > Save as PDF.');
                 }
             }
-        } else {
+            return;
+        }
+        
+        // For other devices, use print dialog
+        try {
             window.print();
+        } catch (error) {
+            console.error('Print error:', error);
+            // Fallback: scroll to top
+            if (printRef.current) {
+                printRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                alert('Please use your browser\'s Print function (Ctrl+P / Cmd+P) to save as PDF.');
+            }
         }
     };
 
@@ -177,7 +190,7 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
                         <button onClick={handlePrint} className="flex-1 sm:flex-none bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 sm:px-4 rounded-lg transition-colors duration-200 text-sm sm:text-base">
                             Print / Save PDF
                         </button>
-                        <button onClick={() => navigateTo('dashboard')} className="flex-1 sm:flex-none bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-3 sm:px-4 rounded-lg transition-colors duration-200 text-sm sm:text-base">
+                        <button onClick={() => navigateTo(documentToView.type === 'invoice' ? 'invoices' : 'proformas')} className="flex-1 sm:flex-none bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-3 sm:px-4 rounded-lg transition-colors duration-200 text-sm sm:text-base">
                             Back
                         </button>
                     </div>
