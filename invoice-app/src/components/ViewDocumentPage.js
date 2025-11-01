@@ -3,10 +3,41 @@ import { collection, addDoc, updateDoc, doc, runTransaction, getDoc } from 'fire
 import { auth, db } from '../firebase/config';
 import { COMPANY_INFO } from '../config';
 
+// Load html2canvas from CDN if not available
+const loadHtml2Canvas = () => {
+    return new Promise((resolve, reject) => {
+        if (window.html2canvas) {
+            resolve(window.html2canvas);
+            return;
+        }
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+        script.onload = () => resolve(window.html2canvas);
+        script.onerror = () => reject(new Error('Failed to load html2canvas'));
+        document.head.appendChild(script);
+    });
+};
+
+// Load jsPDF from CDN if not available
+const loadJsPDF = () => {
+    return new Promise((resolve, reject) => {
+        if (window.jspdf) {
+            resolve(window.jspdf.jsPDF);
+            return;
+        }
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+        script.onload = () => resolve(window.jspdf.jsPDF);
+        script.onerror = () => reject(new Error('Failed to load jsPDF'));
+        document.head.appendChild(script);
+    });
+};
+
 const ViewDocumentPage = ({ documentToView, navigateTo }) => {
     const printRef = useRef();
     const [userSettings, setUserSettings] = useState(null);
     const [isConverting, setIsConverting] = useState(false);
+    const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
     useEffect(() => {
         if (documentToView) {
@@ -37,39 +68,81 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
         fetchUserSettings();
     }, []);
 
-    const handleShare = async () => {
+    const handleShare = async (e) => {
         // Check if iOS and in standalone mode (Add to Home Screen)
         const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
         const isStandalone = window.navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
         
         if (isIOS && isStandalone && navigator.share && printRef.current) {
             try {
-                // Try to share the document content
-                // First, scroll to the print area to ensure it's visible
-                if (printRef.current) {
-                    printRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }
+                setIsGeneratingPDF(true);
                 
-                // Get the document title
+                // Get the document title for filename
                 const { type, documentNumber, client } = documentToView;
-                const title = `${type}-${documentNumber}-${client.name}`;
+                const filename = `${type}-${documentNumber}-${client.name}.pdf`;
                 
-                // Try to share with Web Share API
-                // Note: iOS Share API might not support HTML directly, so we'll provide text/URL
-                const shareData = {
-                    title: title,
-                    text: `${type} ${documentNumber} for ${client.name}`,
-                    url: window.location.href
-                };
+                // Load required libraries
+                const html2canvas = await loadHtml2Canvas();
+                const { jsPDF } = await loadJsPDF();
                 
-                await navigator.share(shareData);
+                // Capture the print area as canvas
+                const canvas = await html2canvas(printRef.current, {
+                    scale: 2,
+                    useCORS: true,
+                    logging: false,
+                    backgroundColor: '#ffffff'
+                });
+                
+                // Convert canvas to image data
+                const imgData = canvas.toDataURL('image/png');
+                
+                // Calculate PDF dimensions (A4 aspect ratio)
+                const pdfWidth = 210; // A4 width in mm
+                const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+                const pdf = new jsPDF({
+                    orientation: pdfHeight > pdfWidth ? 'portrait' : 'landscape',
+                    unit: 'mm',
+                    format: [pdfWidth, pdfHeight]
+                });
+                
+                // Add image to PDF
+                pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+                
+                // Generate PDF blob
+                const pdfBlob = pdf.output('blob');
+                
+                // Create a File object for sharing
+                const file = new File([pdfBlob], filename, { type: 'application/pdf' });
+                
+                // Share the PDF file
+                if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+                    await navigator.share({
+                        title: `${type} ${documentNumber}`,
+                        text: `${type} ${documentNumber} for ${client.name}`,
+                        files: [file]
+                    });
+                } else {
+                    // Fallback: download the PDF
+                    const url = URL.createObjectURL(pdfBlob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = filename;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                    alert('PDF generated! Check your downloads folder.');
+                }
             } catch (error) {
                 // User cancelled or share failed
                 if (error.name !== 'AbortError') {
                     console.error('Share error:', error);
+                    alert('Failed to generate PDF. Please try again or use Print function.');
                     // Fallback to print
                     handlePrint();
                 }
+            } finally {
+                setIsGeneratingPDF(false);
             }
         } else {
             // Fallback to print for non-iOS or if Share API not available
@@ -219,11 +292,15 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
                         )}
                         {/* Show Share button for iOS standalone mode, otherwise show Print */}
                         {(window.navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)) && navigator.share ? (
-                            <button onClick={handleShare} className="flex-1 sm:flex-none bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 sm:px-4 rounded-lg transition-colors duration-200 text-sm sm:text-base flex items-center justify-center gap-2">
+                            <button 
+                                onClick={handleShare} 
+                                disabled={isGeneratingPDF}
+                                className="flex-1 sm:flex-none bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 sm:px-4 rounded-lg transition-colors duration-200 text-sm sm:text-base flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
                                 </svg>
-                                Share / Save PDF
+                                {isGeneratingPDF ? 'Generating PDF...' : 'Share / Save PDF'}
                             </button>
                         ) : (
                             <button onClick={handlePrint} className="flex-1 sm:flex-none bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 sm:px-4 rounded-lg transition-colors duration-200 text-sm sm:text-base">
