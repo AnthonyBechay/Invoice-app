@@ -2,79 +2,8 @@ import React, { useRef, useEffect, useState } from 'react';
 import { collection, addDoc, updateDoc, doc, runTransaction, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
 import { COMPANY_INFO } from '../config';
-
-// Load html2canvas from CDN if not available
-const loadHtml2Canvas = () => {
-    return new Promise((resolve, reject) => {
-        if (window.html2canvas) {
-            resolve(window.html2canvas);
-            return;
-        }
-        const script = document.createElement('script');
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-        script.onload = () => resolve(window.html2canvas);
-        script.onerror = () => reject(new Error('Failed to load html2canvas'));
-        document.head.appendChild(script);
-    });
-};
-
-// Load jsPDF from CDN if not available
-const loadJsPDF = () => {
-    return new Promise((resolve, reject) => {
-        // Check multiple possible locations
-        if (window.jspdf && window.jspdf.jsPDF) {
-            resolve(window.jspdf.jsPDF);
-            return;
-        }
-        if (window.jsPDF) {
-            resolve(window.jsPDF);
-            return;
-        }
-        
-        const script = document.createElement('script');
-        // Try a more reliable CDN
-        script.src = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js';
-        script.async = true;
-        script.onload = () => {
-            // Wait a bit for the library to initialize
-            setTimeout(() => {
-                // Check multiple possible exports
-                if (window.jspdf && window.jspdf.jsPDF) {
-                    resolve(window.jspdf.jsPDF);
-                } else if (window.jsPDF) {
-                    resolve(window.jsPDF);
-                } else if (window.jspdf) {
-                    // Sometimes it's just window.jspdf
-                    resolve(window.jspdf);
-                } else {
-                    reject(new Error('jsPDF loaded but not found in window object'));
-                }
-            }, 100);
-        };
-        script.onerror = () => {
-            // Try alternative CDN
-            const altScript = document.createElement('script');
-            altScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
-            altScript.async = true;
-            altScript.onload = () => {
-                setTimeout(() => {
-                    if (window.jspdf && window.jspdf.jsPDF) {
-                        resolve(window.jspdf.jsPDF);
-                    } else if (window.jsPDF) {
-                        resolve(window.jsPDF);
-                    } else if (window.jspdf) {
-                        resolve(window.jspdf);
-                    } else {
-                        reject(new Error('jsPDF loaded from alternative CDN but not found'));
-                    }
-                }, 100);
-            };
-            altScript.onerror = () => reject(new Error('Failed to load jsPDF from both CDNs'));
-            document.head.appendChild(altScript);
-        };
-        document.head.appendChild(script);
-    });
-};
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 
 const ViewDocumentPage = ({ documentToView, navigateTo }) => {
     const printRef = useRef();
@@ -123,13 +52,6 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
                 // Get the document title for filename
                 const { type, documentNumber, client } = documentToView;
                 const filename = `${type}-${documentNumber}-${client.name}.pdf`;
-                
-                console.log('Loading libraries...');
-                // Load required libraries
-                const html2canvas = await loadHtml2Canvas();
-                console.log('html2canvas loaded');
-                const jsPDFConstructor = await loadJsPDF();
-                console.log('jsPDF loaded, constructor type:', typeof jsPDFConstructor);
                 
                 console.log('Capturing canvas...');
                 // Get the element dimensions
@@ -212,23 +134,11 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
                 console.log('Offset:', offsetX, 'x', offsetY, 'mm');
                 
                 // Create PDF instance - use standard A4 format
-                let pdf;
-                if (typeof jsPDFConstructor === 'function') {
-                    pdf = new jsPDFConstructor({
-                        orientation: 'portrait',
-                        unit: 'mm',
-                        format: 'a4'
-                    });
-                } else if (jsPDFConstructor && typeof jsPDFConstructor.jsPDF === 'function') {
-                    const JsPDF = jsPDFConstructor.jsPDF;
-                    pdf = new JsPDF({
-                        orientation: 'portrait',
-                        unit: 'mm',
-                        format: 'a4'
-                    });
-                } else {
-                    throw new Error('jsPDF constructor not found');
-                }
+                const pdf = new jsPDF({
+                    orientation: 'portrait',
+                    unit: 'mm',
+                    format: 'a4'
+                });
                 
                 console.log('Adding image to PDF...');
                 // Add image to PDF - centered on A4 page
@@ -273,17 +183,16 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
                     
                     // Show user-friendly error message
                     let errorMessage = 'Failed to generate PDF. ';
-                    if (error.message.includes('html2canvas')) {
-                        errorMessage += 'Could not load image capture library.';
-                    } else if (error.message.includes('jsPDF') || error.message.includes('jspdf')) {
-                        errorMessage += 'Could not load PDF library.';
-                    } else if (error.message.includes('canvas')) {
-                        errorMessage += 'Could not capture document image.';
+                    if (error.message.includes('canvas') || error.name === 'SecurityError') {
+                        errorMessage += 'Could not capture document image. Please ensure the document is fully loaded.';
+                    } else if (error.message.includes('Share') || error.name === 'AbortError') {
+                        // User cancelled - silently fail
+                        return;
                     } else {
-                        errorMessage += error.message || 'Unknown error occurred.';
+                        errorMessage += error.message || 'Unknown error occurred. Please try again.';
                     }
                     
-                    alert(errorMessage + '\n\nPlease try refreshing the page and try again.');
+                    alert(errorMessage);
                 }
             } finally {
                 setIsGeneratingPDF(false);
