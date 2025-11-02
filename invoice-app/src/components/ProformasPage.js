@@ -28,9 +28,9 @@ const ProformasPage = ({ navigateTo }) => {
         // Fetch all proformas first, then filter in memory
         const proformaQuery = query(
             collection(db, `documents/${auth.currentUser.uid}/userDocuments`),
-            where('type', '==', 'proforma'),
-            orderBy('date', 'desc'),
-            limit(50) // Limit initial load
+            where('type', '==', 'proforma')
+            // orderBy('date', 'desc'), // COMMENTED OUT: Requires Firebase index - will enable later
+            // limit(50) // Limit initial load - will enable after index is added
         );
         
         const unsubscribe = onSnapshot(proformaQuery, (querySnapshot) => {
@@ -75,30 +75,58 @@ const ProformasPage = ({ navigateTo }) => {
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
+        // COMMENTED OUT: Requires Firebase composite index - will enable later
+        // let q = query(
+        //     collection(db, `documents/${auth.currentUser.uid}/userDocuments`),
+        //     where('type', '==', 'invoice'),
+        //     where('date', '>=', thirtyDaysAgo),
+        //     orderBy('date', 'desc'),
+        //     limit(10)
+        // );
+
+        // if (loadMore && lastVisible) {
+        //     q = query(
+        //         collection(db, `documents/${auth.currentUser.uid}/userDocuments`),
+        //         where('type', '==', 'invoice'),
+        //         where('date', '>=', thirtyDaysAgo),
+        //         orderBy('date', 'desc'),
+        //         startAfter(lastVisible),
+        //         limit(10)
+        //     );
+        // }
+        
+        // Fallback: Fetch all invoices and filter in memory
         let q = query(
             collection(db, `documents/${auth.currentUser.uid}/userDocuments`),
-            where('type', '==', 'invoice'),
-            where('date', '>=', thirtyDaysAgo),
-            orderBy('date', 'desc'),
-            limit(10)
+            where('type', '==', 'invoice')
         );
-
-        if (loadMore && lastVisible) {
-            q = query(
-                collection(db, `documents/${auth.currentUser.uid}/userDocuments`),
-                where('type', '==', 'invoice'),
-                where('date', '>=', thirtyDaysAgo),
-                orderBy('date', 'desc'),
-                startAfter(lastVisible),
-                limit(10)
-            );
-        }
 
         try {
             const documentSnapshots = await getDocs(q);
-            const newInvoices = documentSnapshots.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            let newInvoices = documentSnapshots.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            
+            // Filter by date in memory (since composite index is disabled)
+            newInvoices = newInvoices.filter(inv => {
+                const invDate = inv.date?.toDate ? inv.date.toDate() : new Date(inv.date);
+                return invDate >= thirtyDaysAgo;
+            });
+            
+            // Sort by date desc in memory
+            newInvoices.sort((a, b) => {
+                const dateA = a.date?.toDate ? a.date.toDate() : new Date(a.date);
+                const dateB = b.date?.toDate ? b.date.toDate() : new Date(b.date);
+                return dateB - dateA;
+            });
 
-            const newLastVisible = documentSnapshots.docs[documentSnapshots.docs.length - 1];
+            // Pagination in memory (limit to 10 per load)
+            if (loadMore) {
+                const currentCount = historyInvoices.length;
+                newInvoices = newInvoices.slice(currentCount, currentCount + 10);
+            } else {
+                newInvoices = newInvoices.slice(0, 10);
+            }
+
+            const newLastVisible = newInvoices.length > 0 ? newInvoices[newInvoices.length - 1] : null;
             setLastVisible(newLastVisible);
 
             setHistoryInvoices(prev => loadMore ? [...prev, ...newInvoices] : newInvoices);

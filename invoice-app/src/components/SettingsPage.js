@@ -19,7 +19,8 @@ const SettingsPage = () => {
     // User account settings
     const [userDisplayName, setUserDisplayName] = useState('');
     const [userEmail, setUserEmail] = useState('');
-    const [currentPassword, setCurrentPassword] = useState('');
+    const [currentPasswordForEmail, setCurrentPasswordForEmail] = useState('');
+    const [currentPasswordForPassword, setCurrentPasswordForPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [activeTab, setActiveTab] = useState('company');
@@ -183,21 +184,21 @@ const SettingsPage = () => {
 
         try {
             // Re-authenticate before updating email (Firebase requires this)
-            if (!currentPassword) {
+            if (!currentPasswordForEmail) {
                 setFeedback({ type: 'error', message: 'Please enter your current password to change email.' });
                 setLoading(false);
                 return;
             }
 
             // Re-authenticate the user
-            const credential = EmailAuthProvider.credential(auth.currentUser.email, currentPassword);
+            const credential = EmailAuthProvider.credential(auth.currentUser.email, currentPasswordForEmail);
             await reauthenticateWithCredential(auth.currentUser, credential);
             
             // Now update the email
             await updateEmail(auth.currentUser, userEmail);
             setFeedback({ type: 'success', message: 'Email updated successfully!' });
             // Clear password field after successful update
-            setCurrentPassword('');
+            setCurrentPasswordForEmail('');
         } catch (error) {
             console.error("Error updating email:", error);
             if (error.code === 'auth/requires-recent-login') {
@@ -235,12 +236,12 @@ const SettingsPage = () => {
 
         try {
             // Re-authenticate user before changing password
-            const credential = EmailAuthProvider.credential(auth.currentUser.email, currentPassword);
+            const credential = EmailAuthProvider.credential(auth.currentUser.email, currentPasswordForPassword);
             await reauthenticateWithCredential(auth.currentUser, credential);
 
             await updatePassword(auth.currentUser, newPassword);
             setFeedback({ type: 'success', message: 'Password updated successfully!' });
-            setCurrentPassword('');
+            setCurrentPasswordForPassword('');
             setNewPassword('');
             setConfirmPassword('');
         } catch (error) {
@@ -537,38 +538,46 @@ const SettingsPage = () => {
                         {/* Email Settings */}
                         <div className="border-b border-gray-200 pb-6">
                             <h3 className="text-lg font-medium text-gray-900 mb-4">Email Address</h3>
+                            <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-4">
+                                <p className="text-sm text-blue-700">
+                                    <strong>Current Email:</strong> {auth.currentUser?.email}
+                                </p>
+                            </div>
                             <div className="space-y-4">
                                 <div>
-                                    <label htmlFor="userEmail" className="block text-sm font-medium text-gray-700">Email</label>
+                                    <label htmlFor="userEmail" className="block text-sm font-medium text-gray-700 mb-1">New Email Address</label>
                                     <input
                                         type="email"
                                         id="userEmail"
                                         value={userEmail}
                                         onChange={(e) => setUserEmail(e.target.value)}
                                         className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                                        placeholder="Enter your email address"
+                                        placeholder="Enter your new email address"
                                     />
+                                    <p className="text-xs text-gray-500 mt-1">Enter a new email address to update your account email.</p>
                                 </div>
                                 <div>
-                                    <label htmlFor="currentPasswordForEmail" className="block text-sm font-medium text-gray-700 mb-1">Current Password (Required for email change)</label>
+                                    <label htmlFor="currentPasswordForEmail" className="block text-sm font-medium text-gray-700 mb-1">
+                                        Current Password <span className="text-red-600">*</span>
+                                    </label>
                                     <input
                                         type="password"
                                         id="currentPasswordForEmail"
-                                        value={currentPassword}
-                                        onChange={(e) => setCurrentPassword(e.target.value)}
+                                        value={currentPasswordForEmail}
+                                        onChange={(e) => setCurrentPasswordForEmail(e.target.value)}
                                         className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                                         placeholder="Enter your current password"
                                     />
+                                    <p className="text-xs text-gray-500 mt-1">Firebase requires your current password to change your email address for security reasons.</p>
                                 </div>
                                 <div>
                                     <button
                                         onClick={handleUpdateEmail}
-                                        disabled={loading || !currentPassword}
-                                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-md disabled:bg-indigo-300 disabled:cursor-not-allowed"
+                                        disabled={loading || !currentPasswordForEmail || !userEmail || userEmail === auth.currentUser?.email}
+                                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-md disabled:bg-indigo-300 disabled:cursor-not-allowed transition-colors"
                                     >
-                                        {loading ? 'Updating...' : 'Update Email'}
+                                        {loading ? 'Updating Email...' : 'Update Email'}
                                     </button>
-                                    <p className="text-xs text-gray-500 mt-2">You need to enter your current password to change your email address.</p>
                                 </div>
                             </div>
                         </div>
@@ -576,47 +585,66 @@ const SettingsPage = () => {
                         {/* Password Settings */}
                         <div>
                             <h3 className="text-lg font-medium text-gray-900 mb-4">Change Password</h3>
+                            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
+                                <p className="text-sm text-yellow-700">
+                                    <strong>Security Note:</strong> Choose a strong password with at least 6 characters. You will need to enter your current password to change it.
+                                </p>
+                            </div>
                             <div className="space-y-4">
                                 <div>
-                                    <label htmlFor="currentPassword" className="block text-sm font-medium text-gray-700">Current Password</label>
+                                    <label htmlFor="currentPassword" className="block text-sm font-medium text-gray-700 mb-1">
+                                        Current Password <span className="text-red-600">*</span>
+                                    </label>
                                     <input
                                         type="password"
                                         id="currentPassword"
-                                        value={currentPassword}
-                                        onChange={(e) => setCurrentPassword(e.target.value)}
+                                        value={currentPasswordForPassword}
+                                        onChange={(e) => setCurrentPasswordForPassword(e.target.value)}
                                         className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                                        placeholder="Enter current password"
+                                        placeholder="Enter your current password"
                                     />
+                                    <p className="text-xs text-gray-500 mt-1">Required to verify your identity before changing password.</p>
                                 </div>
                                 <div>
-                                    <label htmlFor="newPassword" className="block text-sm font-medium text-gray-700">New Password</label>
+                                    <label htmlFor="newPassword" className="block text-sm font-medium text-gray-700 mb-1">
+                                        New Password <span className="text-red-600">*</span>
+                                    </label>
                                     <input
                                         type="password"
                                         id="newPassword"
                                         value={newPassword}
                                         onChange={(e) => setNewPassword(e.target.value)}
                                         className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                                        placeholder="Enter new password"
+                                        placeholder="Enter new password (min. 6 characters)"
                                     />
+                                    <p className="text-xs text-gray-500 mt-1">Minimum 6 characters required.</p>
                                 </div>
                                 <div>
-                                    <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">Confirm New Password</label>
+                                    <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-1">
+                                        Confirm New Password <span className="text-red-600">*</span>
+                                    </label>
                                     <input
                                         type="password"
                                         id="confirmPassword"
                                         value={confirmPassword}
                                         onChange={(e) => setConfirmPassword(e.target.value)}
                                         className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                                        placeholder="Confirm new password"
+                                        placeholder="Re-enter new password"
                                     />
+                                    {newPassword && confirmPassword && newPassword !== confirmPassword && (
+                                        <p className="text-xs text-red-600 mt-1">Passwords do not match.</p>
+                                    )}
+                                    {newPassword && confirmPassword && newPassword === confirmPassword && (
+                                        <p className="text-xs text-green-600 mt-1">✓ Passwords match.</p>
+                                    )}
                                 </div>
                                 <div>
                                     <button
                                         onClick={handleUpdatePassword}
-                                        disabled={loading}
-                                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-md disabled:bg-indigo-300"
+                                        disabled={loading || !currentPasswordForPassword || !newPassword || !confirmPassword || newPassword !== confirmPassword || newPassword.length < 6}
+                                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-md disabled:bg-indigo-300 disabled:cursor-not-allowed transition-colors"
                                     >
-                                        {loading ? 'Updating...' : 'Update Password'}
+                                        {loading ? 'Updating Password...' : 'Update Password'}
                                     </button>
                                 </div>
                             </div>

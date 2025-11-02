@@ -1372,7 +1372,7 @@ const PaymentsPage = () => {
                         @media print {
                             @page {
                                 size: A4;
-                                margin: 20mm;
+                                margin: 0;
                             }
                             body * {
                                 visibility: hidden;
@@ -1384,15 +1384,31 @@ const PaymentsPage = () => {
                                 position: absolute;
                                 left: 0;
                                 top: 0;
-                                width: 100%;
+                                width: 210mm;
+                                max-width: 210mm;
+                                margin: 0;
+                                padding: 0;
                                 background: white !important;
+                            }
+                            .print-receipt-content {
+                                width: 210mm !important;
+                                max-width: 210mm !important;
+                                margin: 0 auto !important;
+                                padding: 15mm !important;
+                                box-sizing: border-box;
                             }
                             .print-hidden {
                                 display: none !important;
                             }
+                            .print-receipt header {
+                                display: flex !important;
+                                flex-direction: row !important;
+                                justify-content: space-between !important;
+                                align-items: flex-start !important;
+                            }
                         }
                     `}</style>
-                    <div className="bg-white rounded-lg shadow-2xl w-full max-w-[794px] max-h-[90vh] overflow-y-auto print-receipt" onClick={(e) => e.stopPropagation()}>
+                    <div className="bg-white rounded-lg shadow-2xl w-full max-w-[794px] max-h-[90vh] overflow-y-auto print-receipt" onClick={(e) => e.stopPropagation()} style={{ margin: '0 auto' }}>
                         {/* Receipt Header */}
                         <div className="bg-indigo-600 text-white px-8 py-6 flex justify-between items-center print:bg-white print:text-black print:border-b-2 print:border-gray-300 print-hidden">
                             <h2 className="text-xl font-bold">Payment Receipt</h2>

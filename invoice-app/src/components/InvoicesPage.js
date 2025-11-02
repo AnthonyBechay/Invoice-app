@@ -67,9 +67,9 @@ const InvoicesPage = ({ navigateTo }) => {
 
         const q = query(
             collection(db, `documents/${auth.currentUser.uid}/userDocuments`),
-            where('type', '==', 'invoice'),
-            orderBy('date', 'desc'),
-            limit(50) // Limit initial load
+            where('type', '==', 'invoice')
+            // orderBy('date', 'desc'), // COMMENTED OUT: Requires Firebase index - will enable later
+            // limit(50) // Limit initial load - will enable after index is added
         );
 
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
