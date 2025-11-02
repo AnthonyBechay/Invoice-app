@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { doc, getDoc, setDoc, collection, query, where, getDocs, deleteDoc, writeBatch, limit } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { updateProfile, updateEmail, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
+import { updateProfile, updateEmail, updatePassword, reauthenticateWithCredential, EmailAuthProvider, sendEmailVerification, verifyBeforeUpdateEmail } from 'firebase/auth';
 import { auth, db, storage } from '../firebase/config';
 import { repairMigratedPayments } from '../utils/paymentMigration';
 
@@ -194,11 +194,18 @@ const SettingsPage = () => {
             const credential = EmailAuthProvider.credential(auth.currentUser.email, currentPasswordForEmail);
             await reauthenticateWithCredential(auth.currentUser, credential);
             
-            // Now update the email
-            await updateEmail(auth.currentUser, userEmail);
-            setFeedback({ type: 'success', message: 'Email updated successfully!' });
-            // Clear password field after successful update
+            // Use verifyBeforeUpdateEmail - sends verification email to new address
+            // User must click link in email before email change takes effect
+            await verifyBeforeUpdateEmail(auth.currentUser, userEmail);
+            
+            setFeedback({ 
+                type: 'success', 
+                message: `Verification email sent to ${userEmail}. Please check your inbox and click the verification link to complete the email change. The email will be updated after verification.` 
+            });
+            
+            // Clear password field after successful request
             setCurrentPasswordForEmail('');
+            // Don't clear userEmail field so user can see what email they're changing to
         } catch (error) {
             console.error("Error updating email:", error);
             if (error.code === 'auth/requires-recent-login') {
@@ -209,8 +216,10 @@ const SettingsPage = () => {
                 setFeedback({ type: 'error', message: 'This email is already in use by another account.' });
             } else if (error.code === 'auth/invalid-email') {
                 setFeedback({ type: 'error', message: 'Please enter a valid email address.' });
+            } else if (error.code === 'auth/operation-not-allowed') {
+                setFeedback({ type: 'error', message: 'Email verification is required. Please verify the new email address before changing it.' });
             } else {
-                setFeedback({ type: 'error', message: `Failed to update email: ${error.message}` });
+                setFeedback({ type: 'error', message: `Failed to send verification email: ${error.message}` });
             }
         } finally {
             setLoading(false);
@@ -539,8 +548,11 @@ const SettingsPage = () => {
                         <div className="border-b border-gray-200 pb-6">
                             <h3 className="text-lg font-medium text-gray-900 mb-4">Email Address</h3>
                             <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-4">
-                                <p className="text-sm text-blue-700">
+                                <p className="text-sm text-blue-700 mb-2">
                                     <strong>Current Email:</strong> {auth.currentUser?.email}
+                                </p>
+                                <p className="text-xs text-blue-600">
+                                    <strong>Note:</strong> Firebase will send a verification email to your new address. The email change will only take effect after you click the verification link in that email.
                                 </p>
                             </div>
                             <div className="space-y-4">
@@ -554,7 +566,7 @@ const SettingsPage = () => {
                                         className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                                         placeholder="Enter your new email address"
                                     />
-                                    <p className="text-xs text-gray-500 mt-1">Enter a new email address to update your account email.</p>
+                                    <p className="text-xs text-gray-500 mt-1">Enter a new email address. A verification email will be sent to the new address. You must click the link in that email to complete the change.</p>
                                 </div>
                                 <div>
                                     <label htmlFor="currentPasswordForEmail" className="block text-sm font-medium text-gray-700 mb-1">
@@ -568,7 +580,7 @@ const SettingsPage = () => {
                                         className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                                         placeholder="Enter your current password"
                                     />
-                                    <p className="text-xs text-gray-500 mt-1">Firebase requires your current password to change your email address for security reasons.</p>
+                                    <p className="text-xs text-gray-500 mt-1">Firebase requires your current password to change your email address for security reasons. After clicking "Update Email", check your new email inbox for a verification link.</p>
                                 </div>
                                 <div>
                                     <button
