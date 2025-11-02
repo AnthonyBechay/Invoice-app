@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { collection, query, onSnapshot, where, Timestamp } from 'firebase/firestore';
+import React, { useState, useEffect, useMemo } from 'react';
+import { collection, query, onSnapshot, where, Timestamp, limit, orderBy } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
+import { CardSkeleton, ListItemSkeleton } from './LoadingSkeleton';
 
 const StatCard = ({ title, value, detail, color, isExpanded, onToggle }) => (
     <div className={`rounded-lg shadow-lg text-white ${color} transition-all duration-300 ${isExpanded ? 'p-6' : 'p-4'}`}>
@@ -82,12 +83,16 @@ const Dashboard = ({ navigateTo }) => {
         }
     };
 
+    // Memoize date range calculation
+    const dateRange = useMemo(() => getDateRange(), [filterPeriod]);
+
     useEffect(() => {
         if (!auth.currentUser) return;
-        const dateRange = getDateRange();
         
         const q = query(
-            collection(db, `documents/${auth.currentUser.uid}/userDocuments`)
+            collection(db, `documents/${auth.currentUser.uid}/userDocuments`),
+            orderBy('date', 'desc'),
+            limit(100) // Limit initial load to 100 documents for better performance
         );
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const docs = [];
@@ -106,8 +111,9 @@ const Dashboard = ({ navigateTo }) => {
             const proformas = docs.filter(d => d.type === 'proforma' && !d.converted);
             const invoices = docs.filter(d => d.type === 'invoice');
 
-            const proformasTotal = proformas.reduce((sum, doc) => sum + doc.total, 0);
-            const invoicesTotal = invoices.reduce((sum, doc) => sum + doc.total, 0);
+            // Memoized calculations for totals
+            const proformasTotal = proformas.reduce((sum, doc) => sum + (doc.total || 0), 0);
+            const invoicesTotal = invoices.reduce((sum, doc) => sum + (doc.total || 0), 0);
 
             setStats({
                 proformasCount: proformas.length,
@@ -153,10 +159,30 @@ const Dashboard = ({ navigateTo }) => {
         });
 
         return () => unsubscribe();
-    }, [filterPeriod]);
+    }, [filterPeriod, dateRange]);
 
     if (loading) {
-        return <div className="flex justify-center items-center h-screen"><div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-blue-500"></div></div>;
+        return (
+            <div>
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                    <div className="h-10 bg-gray-200 rounded w-64 animate-pulse"></div>
+                    <div className="h-10 bg-gray-200 rounded w-48 animate-pulse"></div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                    <CardSkeleton />
+                    <CardSkeleton />
+                    <CardSkeleton />
+                </div>
+                <div className="bg-white p-6 rounded-lg shadow-lg mb-8">
+                    <div className="h-8 bg-gray-200 rounded w-48 mb-4 animate-pulse"></div>
+                    <div className="space-y-2">
+                        <ListItemSkeleton />
+                        <ListItemSkeleton />
+                        <ListItemSkeleton />
+                    </div>
+                </div>
+            </div>
+        );
     }
 
     return (

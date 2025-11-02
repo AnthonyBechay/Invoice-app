@@ -1,13 +1,17 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, query, where, onSnapshot, doc, updateDoc, deleteDoc, addDoc, getDocs } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, updateDoc, deleteDoc, addDoc, getDocs, limit, orderBy } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
+import { useDebounce } from '../hooks/useDebounce';
+import { TableSkeleton, ListItemSkeleton } from './LoadingSkeleton';
 
 const InvoicesPage = ({ navigateTo }) => {
     const [invoices, setInvoices] = useState([]);
     const [cancelledInvoices, setCancelledInvoices] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
+    const debouncedSearchQuery = useDebounce(searchQuery, 300);
     const [displayLimit, setDisplayLimit] = useState(30);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [showCancelledModal, setShowCancelledModal] = useState(false);
     const [confirmCancel, setConfirmCancel] = useState(null);
     const [showPaymentRefundModal, setShowPaymentRefundModal] = useState(false);
@@ -44,7 +48,9 @@ const InvoicesPage = ({ navigateTo }) => {
 
         const q = query(
             collection(db, `documents/${auth.currentUser.uid}/userDocuments`),
-            where('type', '==', 'invoice')
+            where('type', '==', 'invoice'),
+            orderBy('date', 'desc'),
+            limit(50) // Limit initial load
         );
 
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -387,9 +393,10 @@ const InvoicesPage = ({ navigateTo }) => {
         }
     };
 
-    // Filter invoices based on search query
-    const filteredInvoices = invoices.filter(doc => {
-        const search = searchQuery.toLowerCase();
+    // Filter invoices based on debounced search query
+    const filteredInvoices = useMemo(() => {
+        return invoices.filter(doc => {
+            const search = debouncedSearchQuery.toLowerCase();
         const dateStr = doc.date.toDate().toLocaleDateString();
         const paymentStatus = getPaymentStatus(doc);
 
@@ -401,7 +408,7 @@ const InvoicesPage = ({ navigateTo }) => {
             paymentStatus.label.toLowerCase().includes(search) ||
             (doc.proformaNumber && doc.proformaNumber.toLowerCase().includes(search))
         );
-    });
+    }, [invoices, debouncedSearchQuery]);
 
     // If searching, show all results; otherwise limit to displayLimit (default 30)
     const displayedInvoices = searchQuery ? filteredInvoices : filteredInvoices.slice(0, displayLimit);
@@ -458,12 +465,10 @@ const InvoicesPage = ({ navigateTo }) => {
             <div className="bg-white p-6 rounded-lg shadow-lg">
                 <div className="overflow-x-auto">
                     {loading ? (
-                        <div className="flex justify-center items-center py-8">
-                            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-                        </div>
+                        <TableSkeleton rows={5} columns={7} />
                     ) : displayedInvoices.length === 0 ? (
                         <p className="text-gray-500">
-                            {searchQuery ? 'No invoices found matching your search.' : 'No invoices found.'}
+                            {debouncedSearchQuery ? 'No invoices found matching your search.' : 'No invoices found.'}
                         </p>
                     ) : (
                         <table className="min-w-full bg-white">
@@ -530,13 +535,27 @@ const InvoicesPage = ({ navigateTo }) => {
                 </div>
                 
                 {/* Load More Button - only show when not searching */}
-                {!searchQuery && filteredInvoices.length > displayLimit && (
+                {!debouncedSearchQuery && filteredInvoices.length > displayLimit && (
                     <div className="mt-4 text-center">
                         <button
-                            onClick={() => setDisplayLimit(prev => prev + 30)}
-                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-lg transition-colors"
+                            onClick={() => {
+                                setIsLoadingMore(true);
+                                setTimeout(() => {
+                                    setDisplayLimit(prev => prev + 30);
+                                    setIsLoadingMore(false);
+                                }, 300);
+                            }}
+                            disabled={isLoadingMore}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mx-auto"
                         >
-                            Load More Invoices ({filteredInvoices.length - displayLimit} remaining)
+                            {isLoadingMore ? (
+                                <>
+                                    <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></div>
+                                    Loading...
+                                </>
+                            ) : (
+                                `Load More Invoices (${filteredInvoices.length - displayLimit} remaining)`
+                            )}
                         </button>
                     </div>
                 )}

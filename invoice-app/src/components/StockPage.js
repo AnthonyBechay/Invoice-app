@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { collection, query, onSnapshot, addDoc, updateDoc, deleteDoc, doc, runTransaction, writeBatch } from 'firebase/firestore';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { collection, query, onSnapshot, addDoc, updateDoc, deleteDoc, doc, runTransaction, writeBatch, limit, orderBy } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
+import { useDebounce } from '../hooks/useDebounce';
+import { TableSkeleton } from './LoadingSkeleton';
 import Papa from 'papaparse';
 
 // Helper function to get the next sequential ID
@@ -28,6 +30,10 @@ const getNextItemId = async (userId) => {
 const StockPage = () => {
     const [items, setItems] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
+    const debouncedSearchTerm = useDebounce(searchTerm, 300);
+    const [displayLimit, setDisplayLimit] = useState(50);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
     const [newItem, setNewItem] = useState({ 
         name: '', 
@@ -50,7 +56,11 @@ const StockPage = () => {
 
     useEffect(() => {
         if (!auth.currentUser) return;
-        const q = query(collection(db, `items/${auth.currentUser.uid}/userItems`));
+        const q = query(
+            collection(db, `items/${auth.currentUser.uid}/userItems`),
+            orderBy('itemId', 'asc'),
+            limit(100) // Limit initial load
+        );
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const itemsList = [];
             querySnapshot.forEach((doc) => {
@@ -59,6 +69,10 @@ const StockPage = () => {
             // Sort items by their auto-increment ID
             itemsList.sort((a, b) => a.itemId - b.itemId);
             setItems(itemsList);
+            setLoading(false);
+        }, (error) => {
+            console.error("Error fetching items: ", error);
+            setLoading(false);
         });
         return () => unsubscribe();
     }, []);
@@ -230,13 +244,21 @@ const StockPage = () => {
         { name: 'customField2', placeholder: 'Custom Field 2' }
     ];
 
-    const filteredItems = items.filter(item => {
-        const searchTermLower = searchTerm.toLowerCase();
-        // Search in all fields including custom fields
-        return Object.values(item).some(value =>
-            typeof value === 'string' && value.toLowerCase().includes(searchTermLower)
-        );
-    });
+    // Filter items based on debounced search - memoized
+    const filteredItems = useMemo(() => {
+        return items.filter(item => {
+            const searchTermLower = debouncedSearchTerm.toLowerCase();
+            // Search in all fields including custom fields
+            return Object.values(item).some(value =>
+                typeof value === 'string' && value.toLowerCase().includes(searchTermLower)
+            );
+        });
+    }, [items, debouncedSearchTerm]);
+
+    // Limit displayed items - memoized
+    const displayedItems = useMemo(() => {
+        return filteredItems.slice(0, displayLimit);
+    }, [filteredItems, displayLimit]);
 
     return (
         <div>
@@ -306,21 +328,28 @@ const StockPage = () => {
                     />
                 </div>
                  <div className="overflow-x-auto">
-                    <table className="min-w-full bg-white">
-                        <thead className="bg-gray-200 text-gray-600 uppercase text-sm leading-normal">
-                            <tr>
-                                <th className="py-3 px-6 text-left">ID</th>
-                                <th className="py-3 px-6 text-left">Name</th>
-                                <th className="py-3 px-6 text-left">Part Number</th>
-                                <th className="py-3 px-6 text-left">Brand</th>
-                                <th className="py-3 px-6 text-left">Specs</th>
-                                <th className="py-3 px-6 text-right">Buying Price</th>
-                                <th className="py-3 px-6 text-right">Selling Price</th>
-                                <th className="py-3 px-6 text-center">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="text-gray-600 text-sm font-light">
-                            {filteredItems.map(item => (
+                    {loading ? (
+                        <TableSkeleton rows={5} columns={8} />
+                    ) : displayedItems.length === 0 ? (
+                        <p className="text-gray-500 text-center py-8">
+                            {debouncedSearchTerm ? 'No items found matching your search.' : 'No items found.'}
+                        </p>
+                    ) : (
+                        <table className="min-w-full bg-white">
+                            <thead className="bg-gray-200 text-gray-600 uppercase text-sm leading-normal">
+                                <tr>
+                                    <th className="py-3 px-6 text-left">ID</th>
+                                    <th className="py-3 px-6 text-left">Name</th>
+                                    <th className="py-3 px-6 text-left">Part Number</th>
+                                    <th className="py-3 px-6 text-left">Brand</th>
+                                    <th className="py-3 px-6 text-left">Specs</th>
+                                    <th className="py-3 px-6 text-right">Buying Price</th>
+                                    <th className="py-3 px-6 text-right">Selling Price</th>
+                                    <th className="py-3 px-6 text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="text-gray-600 text-sm font-light">
+                                {displayedItems.map(item => (
                                 <tr key={item.id} className="border-b border-gray-200 hover:bg-gray-100">
                                     <td className="py-3 px-6 text-left font-bold">{item.itemId}</td>
                                     <td className="py-3 px-6 text-left font-medium">{item.name}</td>
@@ -340,10 +369,37 @@ const StockPage = () => {
                                         </div>
                                     </td>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                                ))}
+                            </tbody>
+                        </table>
+                    )}
                 </div>
+                
+                {/* Load More Button - only show when not searching */}
+                {!debouncedSearchTerm && filteredItems.length > displayLimit && (
+                    <div className="mt-4 text-center">
+                        <button
+                            onClick={() => {
+                                setIsLoadingMore(true);
+                                setTimeout(() => {
+                                    setDisplayLimit(prev => prev + 50);
+                                    setIsLoadingMore(false);
+                                }, 300);
+                            }}
+                            disabled={isLoadingMore}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mx-auto"
+                        >
+                            {isLoadingMore ? (
+                                <>
+                                    <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></div>
+                                    Loading...
+                                </>
+                            ) : (
+                                `Load More Items (${filteredItems.length - displayLimit} remaining)`
+                            )}
+                        </button>
+                    </div>
+                )}
             </div>
         </div>
     );

@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, onSnapshot, getDocs, orderBy, limit, startAfter, deleteDoc, doc, updateDoc, addDoc, runTransaction } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
+import { useDebounce } from '../hooks/useDebounce';
+import { TableSkeleton } from './LoadingSkeleton';
 
 const ProformasPage = ({ navigateTo }) => {
     const [proformas, setProformas] = useState([]);
@@ -14,7 +16,9 @@ const ProformasPage = ({ navigateTo }) => {
     const [hasMore, setHasMore] = useState(true);
     const [historyFilter, setHistoryFilter] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
-    const [displayLimit, setDisplayLimit] = useState(20);
+    const debouncedSearchQuery = useDebounce(searchQuery, 300);
+    const [displayLimit, setDisplayLimit] = useState(30);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState(null);
     const [convertingIds, setConvertingIds] = useState(new Set()); // Track converting proformas
 
@@ -24,7 +28,9 @@ const ProformasPage = ({ navigateTo }) => {
         // Fetch all proformas first, then filter in memory
         const proformaQuery = query(
             collection(db, `documents/${auth.currentUser.uid}/userDocuments`),
-            where('type', '==', 'proforma')
+            where('type', '==', 'proforma'),
+            orderBy('date', 'desc'),
+            limit(50) // Limit initial load
         );
         
         const unsubscribe = onSnapshot(proformaQuery, (querySnapshot) => {
@@ -235,22 +241,28 @@ const ProformasPage = ({ navigateTo }) => {
         );
     });
 
-    // Filter proformas based on search query
-    const filteredProformas = proformas.filter(doc => {
-        const search = searchQuery.toLowerCase();
-        return (
-            doc.documentNumber.toLowerCase().includes(search) ||
-            doc.client.name.toLowerCase().includes(search) ||
-            doc.date.toDate().toLocaleDateString().includes(search) ||
-            doc.total.toString().includes(search)
-        );
-    });
+    // Filter proformas based on debounced search query - memoized
+    const filteredProformas = useMemo(() => {
+        return proformas.filter(doc => {
+            const search = debouncedSearchQuery.toLowerCase();
+            return (
+                doc.documentNumber.toLowerCase().includes(search) ||
+                doc.client.name.toLowerCase().includes(search) ||
+                doc.date.toDate().toLocaleDateString().includes(search) ||
+                doc.total.toString().includes(search)
+            );
+        });
+    }, [proformas, debouncedSearchQuery]);
 
-    // Limit displayed proformas
-    const displayedProformas = filteredProformas.slice(0, displayLimit);
+    // Limit displayed proformas - memoized
+    const displayedProformas = useMemo(() => {
+        return filteredProformas.slice(0, displayLimit);
+    }, [filteredProformas, displayLimit]);
 
-    // Calculate statistics
-    const totalAmount = displayedProformas.reduce((sum, doc) => sum + doc.total, 0);
+    // Calculate statistics - memoized
+    const totalAmount = useMemo(() => {
+        return displayedProformas.reduce((sum, doc) => sum + (doc.total || 0), 0);
+    }, [displayedProformas]);
 
     return (
         <div>
@@ -317,11 +329,13 @@ const ProformasPage = ({ navigateTo }) => {
 
             <div className="bg-white p-6 rounded-lg shadow-lg">
                 <div className="overflow-x-auto">
-                    {loading ? <p>Loading proformas...</p> :
-                     displayedProformas.length === 0 ? 
+                    {loading ? (
+                        <TableSkeleton rows={5} columns={6} />
+                    ) : displayedProformas.length === 0 ? (
                         <p className="text-gray-500">
-                            {searchQuery ? 'No proformas found matching your search.' : 'No proformas found.'}
-                        </p> :
+                            {debouncedSearchQuery ? 'No proformas found matching your search.' : 'No proformas found.'}
+                        </p>
+                    ) : (
                     <table className="min-w-full bg-white">
                         <thead className="bg-gray-200 text-gray-600 uppercase text-sm leading-normal">
                             <tr>
@@ -375,17 +389,31 @@ const ProformasPage = ({ navigateTo }) => {
                             })}
                         </tbody>
                     </table>
-                    }
+                    )}
                 </div>
                 
-                {/* Show More Button */}
-                {filteredProformas.length > displayLimit && (
+                {/* Load More Button - only show when not searching */}
+                {!debouncedSearchQuery && filteredProformas.length > displayLimit && (
                     <div className="mt-4 text-center">
                         <button
-                            onClick={() => setDisplayLimit(prev => prev + 20)}
-                            className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-6 rounded-lg"
+                            onClick={() => {
+                                setIsLoadingMore(true);
+                                setTimeout(() => {
+                                    setDisplayLimit(prev => prev + 30);
+                                    setIsLoadingMore(false);
+                                }, 300);
+                            }}
+                            disabled={isLoadingMore}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mx-auto"
                         >
-                            Show More ({filteredProformas.length - displayLimit} remaining)
+                            {isLoadingMore ? (
+                                <>
+                                    <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></div>
+                                    Loading...
+                                </>
+                            ) : (
+                                `Load More Proformas (${filteredProformas.length - displayLimit} remaining)`
+                            )}
                         </button>
                     </div>
                 )}

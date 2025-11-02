@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './firebase/config';
+import ErrorBoundary from './components/ErrorBoundary';
 import LoginPage from './components/LoginPage';
 import RegisterPage from './components/RegisterPage';
 import Dashboard from './components/Dashboard';
@@ -61,32 +62,36 @@ export default function App() {
         }
 
         return (
-            <div className="relative min-h-screen md:flex">
-                {/* Mobile menu button */}
-                <div className="md:hidden flex justify-between items-center p-4 bg-gray-800 text-white">
-                    <h1 className="text-xl font-bold">{page.charAt(0).toUpperCase() + page.slice(1)}</h1>
-                    <button onClick={() => setSidebarOpen(!isSidebarOpen)}>
-                        <svg className="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16m-7 6h7" />
-                        </svg>
-                    </button>
+            <ErrorBoundary>
+                <div className="relative min-h-screen md:flex">
+                    {/* Mobile menu button */}
+                    <div className="md:hidden flex justify-between items-center p-4 bg-gray-800 text-white">
+                        <h1 className="text-xl font-bold">{page.charAt(0).toUpperCase() + page.slice(1)}</h1>
+                        <button onClick={() => setSidebarOpen(!isSidebarOpen)}>
+                            <svg className="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16m-7 6h7" />
+                            </svg>
+                        </button>
+                    </div>
+
+                    <Sidebar navigateTo={navigateTo} currentPage={page} isOpen={isSidebarOpen} setOpen={setSidebarOpen} />
+
+                    <main className="flex-1 p-6 sm:p-10 overflow-y-auto bg-gray-100 font-sans">
+                        <ErrorBoundary>
+                            {page === 'dashboard' && <Dashboard navigateTo={navigateTo} />}
+                            {page === 'proformas' && <ProformasPage navigateTo={navigateTo} />}
+                            {page === 'invoices' && <InvoicesPage navigateTo={navigateTo} />}
+                            {page === 'payments' && <PaymentsPage />}
+                            {page === 'stock' && <StockPage />}
+                            {page === 'clients' && <ClientsPage />}
+                            {page === 'newDocument' && <NewDocumentPage navigateTo={navigateTo} documentToEdit={editingDocument} />}
+                            {page === 'viewDocument' && <ViewDocumentPage documentToView={editingDocument} navigateTo={navigateTo} />}
+                            {page === 'settings' && <SettingsPage />}
+                            {page === 'accounting' && <AccountingPage />}
+                        </ErrorBoundary>
+                    </main>
                 </div>
-
-                <Sidebar navigateTo={navigateTo} currentPage={page} isOpen={isSidebarOpen} setOpen={setSidebarOpen} />
-
-                <main className="flex-1 p-6 sm:p-10 overflow-y-auto bg-gray-100 font-sans">
-                    {page === 'dashboard' && <Dashboard navigateTo={navigateTo} />}
-                    {page === 'proformas' && <ProformasPage navigateTo={navigateTo} />}
-                    {page === 'invoices' && <InvoicesPage navigateTo={navigateTo} />}
-                    {page === 'payments' && <PaymentsPage />}
-                    {page === 'stock' && <StockPage />}
-                    {page === 'clients' && <ClientsPage />}
-                    {page === 'newDocument' && <NewDocumentPage navigateTo={navigateTo} documentToEdit={editingDocument} />}
-                    {page === 'viewDocument' && <ViewDocumentPage documentToView={editingDocument} navigateTo={navigateTo} />}
-                    {page === 'settings' && <SettingsPage />}
-                    {page === 'accounting' && <AccountingPage />}
-                </main>
-            </div>
+            </ErrorBoundary>
         );
     };
 

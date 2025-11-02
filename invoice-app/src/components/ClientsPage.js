@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { collection, query, onSnapshot, addDoc, updateDoc, deleteDoc, doc, runTransaction, writeBatch, getDocs, where } from 'firebase/firestore';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { collection, query, onSnapshot, addDoc, updateDoc, deleteDoc, doc, runTransaction, writeBatch, getDocs, where, limit, orderBy } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
+import { useDebounce } from '../hooks/useDebounce';
+import { TableSkeleton } from './LoadingSkeleton';
 import Papa from 'papaparse';
 
 // Helper function to get the next sequential ID for clients
@@ -27,6 +29,10 @@ const getNextClientId = async (userId) => {
 const ClientsPage = () => {
     const [clients, setClients] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
+    const debouncedSearchTerm = useDebounce(searchTerm, 300);
+    const [displayLimit, setDisplayLimit] = useState(50);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
     const [newClient, setNewClient] = useState({ name: '', email: '', phone: '', location: '', vatNumber: '' });
     const [editingClient, setEditingClient] = useState(null);
@@ -35,7 +41,11 @@ const ClientsPage = () => {
 
     useEffect(() => {
         if (!auth.currentUser) return;
-        const q = query(collection(db, `clients/${auth.currentUser.uid}/userClients`));
+        const q = query(
+            collection(db, `clients/${auth.currentUser.uid}/userClients`),
+            orderBy('clientId', 'asc'),
+            limit(100) // Limit initial load
+        );
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const clientsList = [];
             querySnapshot.forEach((doc) => {
@@ -43,6 +53,10 @@ const ClientsPage = () => {
             });
             clientsList.sort((a,b) => a.clientId - b.clientId);
             setClients(clientsList);
+            setLoading(false);
+        }, (error) => {
+            console.error("Error fetching clients: ", error);
+            setLoading(false);
         });
         return () => unsubscribe();
     }, []);
@@ -210,12 +224,20 @@ const ClientsPage = () => {
         }
     };
 
-    const filteredClients = clients.filter(client => {
-        const searchTermLower = searchTerm.toLowerCase();
-        return Object.values(client).some(value =>
-            typeof value === 'string' && value.toLowerCase().includes(searchTermLower)
-        );
-    });
+    // Filter clients based on debounced search - memoized
+    const filteredClients = useMemo(() => {
+        return clients.filter(client => {
+            const searchTermLower = debouncedSearchTerm.toLowerCase();
+            return Object.values(client).some(value =>
+                typeof value === 'string' && value.toLowerCase().includes(searchTermLower)
+            );
+        });
+    }, [clients, debouncedSearchTerm]);
+
+    // Limit displayed clients - memoized
+    const displayedClients = useMemo(() => {
+        return filteredClients.slice(0, displayLimit);
+    }, [filteredClients, displayLimit]);
 
     return (
         <div>
@@ -260,20 +282,27 @@ const ClientsPage = () => {
                     />
                 </div>
                  <div className="overflow-x-auto">
-                    <table className="min-w-full bg-white">
-                        <thead className="bg-gray-200 text-gray-600 uppercase text-sm leading-normal">
-                            <tr>
-                                <th className="py-3 px-6 text-left">ID</th>
-                                <th className="py-3 px-6 text-left">Name</th>
-                                <th className="py-3 px-6 text-left">Email</th>
-                                <th className="py-3 px-6 text-left">Phone</th>
-                                <th className="py-3 px-6 text-left">Location</th>
-                                <th className="py-3 px-6 text-left">VAT Number</th>
-                                <th className="py-3 px-6 text-center">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="text-gray-600 text-sm font-light">
-                            {filteredClients.map(client => (
+                    {loading ? (
+                        <TableSkeleton rows={5} columns={7} />
+                    ) : displayedClients.length === 0 ? (
+                        <p className="text-gray-500 text-center py-8">
+                            {debouncedSearchTerm ? 'No clients found matching your search.' : 'No clients found.'}
+                        </p>
+                    ) : (
+                        <table className="min-w-full bg-white">
+                            <thead className="bg-gray-200 text-gray-600 uppercase text-sm leading-normal">
+                                <tr>
+                                    <th className="py-3 px-6 text-left">ID</th>
+                                    <th className="py-3 px-6 text-left">Name</th>
+                                    <th className="py-3 px-6 text-left">Email</th>
+                                    <th className="py-3 px-6 text-left">Phone</th>
+                                    <th className="py-3 px-6 text-left">Location</th>
+                                    <th className="py-3 px-6 text-left">VAT Number</th>
+                                    <th className="py-3 px-6 text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="text-gray-600 text-sm font-light">
+                                {displayedClients.map(client => (
                                 <tr key={client.id} className="border-b border-gray-200 hover:bg-gray-100">
                                     <td className="py-3 px-6 text-left font-bold">{client.clientId}</td>
                                     <td className="py-3 px-6 text-left font-medium">{client.name}</td>
@@ -292,10 +321,37 @@ const ClientsPage = () => {
                                         </div>
                                     </td>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                                ))}
+                            </tbody>
+                        </table>
+                    )}
                 </div>
+                
+                {/* Load More Button - only show when not searching */}
+                {!debouncedSearchTerm && filteredClients.length > displayLimit && (
+                    <div className="mt-4 text-center">
+                        <button
+                            onClick={() => {
+                                setIsLoadingMore(true);
+                                setTimeout(() => {
+                                    setDisplayLimit(prev => prev + 50);
+                                    setIsLoadingMore(false);
+                                }, 300);
+                            }}
+                            disabled={isLoadingMore}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mx-auto"
+                        >
+                            {isLoadingMore ? (
+                                <>
+                                    <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></div>
+                                    Loading...
+                                </>
+                            ) : (
+                                `Load More Clients (${filteredClients.length - displayLimit} remaining)`
+                            )}
+                        </button>
+                    </div>
+                )}
             </div>
         </div>
     );
