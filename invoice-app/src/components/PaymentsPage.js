@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, getDocs, orderBy, deleteDoc, limit as firestoreLimit, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
 import { migratePayments, verifyMigration } from '../utils/paymentMigration';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 
 const PaymentsPage = () => {
     const [payments, setPayments] = useState([]);
@@ -40,6 +42,8 @@ const PaymentsPage = () => {
     const [paymentSearchTerm, setPaymentSearchTerm] = useState('');
     const [displayedPaymentsLimit, setDisplayedPaymentsLimit] = useState(20);
     const [userSettings, setUserSettings] = useState(null);
+    const [isGeneratingReceiptPDF, setIsGeneratingReceiptPDF] = useState(false);
+    const receiptPrintRef = useRef(null);
 
     // Handle click outside client dropdown
     useEffect(() => {
@@ -84,34 +88,86 @@ const PaymentsPage = () => {
                 setMigrationStatus(migrationCheck);
 
                 // Fetch clients (usually small dataset) - use snapshot for real-time updates
-                const clientsQuery = query(collection(db, `clients/${auth.currentUser.uid}/userClients`), orderBy('name'));
-                const clientsSnapshot = await getDocs(clientsQuery);
-                const clientsData = clientsSnapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                }));
-                setClients(clientsData);
-
-                // Fetch all documents and filter in memory (no index required)
-                const documentsQuery = query(
-                    collection(db, `documents/${auth.currentUser.uid}/userDocuments`)
-                );
-                const documentsSnapshot = await getDocs(documentsQuery);
-                const documentsData = documentsSnapshot.docs
-                    .map(doc => ({
+                // OPTIMIZATION: Limit to reasonable number of clients
+                try {
+                    const clientsQuery = query(
+                        collection(db, `clients/${auth.currentUser.uid}/userClients`),
+                        orderBy('name'),
+                        firestoreLimit(500) // Limit for very large client lists
+                    );
+                    const clientsSnapshot = await getDocs(clientsQuery);
+                    const clientsData = clientsSnapshot.docs.map(doc => ({
                         id: doc.id,
                         ...doc.data()
-                    }))
-                    .filter(doc => doc.type === 'invoice') // Filter invoices in memory
-                    .sort((a, b) => b.date?.toDate?.() - a.date?.toDate?.()); // Sort by date desc
-                setDocuments(documentsData);
+                    }));
+                    setClients(clientsData);
+                } catch (error) {
+                    // Fallback if index not available
+                    const clientsQuery = query(
+                        collection(db, `clients/${auth.currentUser.uid}/userClients`),
+                        firestoreLimit(500)
+                    );
+                    const clientsSnapshot = await getDocs(clientsQuery);
+                    const clientsData = clientsSnapshot.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data()
+                    })).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+                    setClients(clientsData);
+                }
+
+                // Fetch documents with limit and filter in memory (no index required)
+                // OPTIMIZATION: Limit initial load to improve performance
+                const documentsQuery = query(
+                    collection(db, `documents/${auth.currentUser.uid}/userDocuments`),
+                    orderBy('date', 'desc'),
+                    firestoreLimit(200) // Limit to recent documents
+                );
+                
+                try {
+                    const documentsSnapshot = await getDocs(documentsQuery);
+                    const documentsData = documentsSnapshot.docs
+                        .map(doc => ({
+                            id: doc.id,
+                            ...doc.data()
+                        }))
+                        .filter(doc => doc.type === 'invoice') // Filter invoices in memory
+                        .sort((a, b) => {
+                            const dateA = a.date?.toDate ? a.date.toDate() : new Date(a.date);
+                            const dateB = b.date?.toDate ? b.date.toDate() : new Date(b.date);
+                            return dateB - dateA;
+                        });
+                    setDocuments(documentsData);
+                } catch (error) {
+                    // Fallback if index not available
+                    console.warn('Documents query failed, using fallback:', error);
+                    const fallbackQuery = query(
+                        collection(db, `documents/${auth.currentUser.uid}/userDocuments`),
+                        firestoreLimit(200)
+                    );
+                    const documentsSnapshot = await getDocs(fallbackQuery);
+                    const documentsData = documentsSnapshot.docs
+                        .map(doc => ({
+                            id: doc.id,
+                            ...doc.data()
+                        }))
+                        .filter(doc => doc.type === 'invoice')
+                        .sort((a, b) => {
+                            const dateA = a.date?.toDate ? a.date.toDate() : new Date(a.date);
+                            const dateB = b.date?.toDate ? b.date.toDate() : new Date(b.date);
+                            return dateB - dateA;
+                        });
+                    setDocuments(documentsData);
+                }
 
                 // Listen to payments (real-time) - this is the main data source
                 // CRITICAL FIX: Filter payments by current user to ensure data isolation
                 // Note: We sort in JavaScript to avoid needing a Firebase composite index
+                // OPTIMIZATION: Limit initial load and sort in JavaScript
                 const paymentsQuery = query(
                     collection(db, 'payments'),
-                    where('userId', '==', auth.currentUser.uid)
+                    where('userId', '==', auth.currentUser.uid),
+                    orderBy('paymentDate', 'desc'), // Primary sort
+                    firestoreLimit(100) // Limit initial load for better performance
                 );
 
                 unsubscribePayments = onSnapshot(paymentsQuery, (snapshot) => {
@@ -119,7 +175,7 @@ const PaymentsPage = () => {
                         id: doc.id,
                         ...doc.data()
                     }));
-                    // Sort by paymentDate in JavaScript (newest first)
+                    // Additional sorting by paymentDate in JavaScript (already sorted by query, but ensure consistency)
                     paymentsData.sort((a, b) => {
                         const dateA = a.paymentDate?.toDate ? a.paymentDate.toDate() : new Date(a.paymentDate);
                         const dateB = b.paymentDate?.toDate ? b.paymentDate.toDate() : new Date(b.paymentDate);
@@ -129,7 +185,30 @@ const PaymentsPage = () => {
                     setLoading(false);
                 }, (error) => {
                     console.error('Error fetching payments:', error);
-                    setLoading(false);
+                    // Fallback: fetch without orderBy if index not available
+                    if (error.code === 'failed-precondition') {
+                        const fallbackQuery = query(
+                            collection(db, 'payments'),
+                            where('userId', '==', auth.currentUser.uid),
+                            firestoreLimit(100)
+                        );
+                        const fallbackUnsubscribe = onSnapshot(fallbackQuery, (snapshot) => {
+                            const paymentsData = snapshot.docs.map(doc => ({
+                                id: doc.id,
+                                ...doc.data()
+                            }));
+                            paymentsData.sort((a, b) => {
+                                const dateA = a.paymentDate?.toDate ? a.paymentDate.toDate() : new Date(a.paymentDate);
+                                const dateB = b.paymentDate?.toDate ? b.paymentDate.toDate() : new Date(b.paymentDate);
+                                return dateB - dateA;
+                            });
+                            setPayments(paymentsData);
+                            setLoading(false);
+                        });
+                        unsubscribePayments = fallbackUnsubscribe;
+                    } else {
+                        setLoading(false);
+                    }
                 });
 
             } catch (error) {
@@ -374,8 +453,9 @@ const PaymentsPage = () => {
         return filtered;
     };
 
-    const getFilteredPayments = () => {
-        let filtered = payments;
+    // Memoized filtered payments
+    const filteredPayments = useMemo(() => {
+        let filtered = [...payments]; // Create copy to avoid mutating
 
         // Filter by client if selected
         if (clientFilter !== 'all') {
@@ -409,13 +489,13 @@ const PaymentsPage = () => {
             return dateB - dateA;
         });
 
-        // If no search term, limit to first 20, otherwise show all search results
+        // If no search term, limit to first N, otherwise show all search results
         if (!paymentSearchTerm) {
             return filtered.slice(0, displayedPaymentsLimit);
         }
 
         return filtered;
-    };
+    }, [payments, clientFilter, paymentSearchTerm, displayedPaymentsLimit]);
 
     // Memoized client payments lookup
     const getClientPayments = useCallback((clientId) => {
@@ -468,6 +548,160 @@ const PaymentsPage = () => {
         if (!document) return 0;
         const totalPaid = document.totalPaid || 0;
         return Math.max(0, document.total - totalPaid);
+    };
+
+    // PDF generation for payment receipt
+    const handleGenerateReceiptPDF = async () => {
+        if (!selectedPaymentForView || !receiptPrintRef.current) return;
+
+        // Check if iOS and in standalone mode
+        const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+        const isStandalone = window.navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+
+        if (isIOS && isStandalone && navigator.share) {
+            try {
+                setIsGeneratingReceiptPDF(true);
+
+                const filename = `Payment-Receipt-${selectedPaymentForView.id.substring(0, 8)}.pdf`;
+                const element = receiptPrintRef.current;
+                const a4WidthPx = 794; // A4 width in pixels at 96 DPI
+
+                // Store original styles
+                const originalWidth = element.style.width;
+                const originalMaxWidth = element.style.maxWidth;
+                const originalMargin = element.style.margin;
+                const originalPadding = element.style.padding;
+
+                // Set fixed A4 width for consistent capture
+                element.style.width = a4WidthPx + 'px';
+                element.style.maxWidth = a4WidthPx + 'px';
+                element.style.margin = '0';
+                element.style.padding = '32px';
+
+                // Force layout recalculation
+                element.offsetHeight;
+                
+                // Wait for logo image to load if present
+                const logoImg = element.querySelector('img');
+                if (logoImg && logoImg.src) {
+                    await new Promise((resolve, reject) => {
+                        if (logoImg.complete) {
+                            resolve();
+                        } else {
+                            logoImg.onload = resolve;
+                            logoImg.onerror = resolve; // Continue even if logo fails to load
+                            setTimeout(resolve, 500); // Timeout after 500ms
+                        }
+                    });
+                }
+                
+                await new Promise(resolve => setTimeout(resolve, 300));
+
+                const elementWidth = element.offsetWidth || a4WidthPx;
+                const elementHeight = element.scrollHeight || element.offsetHeight;
+
+                // Capture as canvas
+                const canvas = await html2canvas(element, {
+                    scale: 2,
+                    useCORS: true,
+                    logging: false,
+                    backgroundColor: '#ffffff',
+                    width: elementWidth,
+                    height: elementHeight,
+                    windowWidth: elementWidth,
+                    windowHeight: elementHeight,
+                    removeContainer: false,
+                    allowTaint: true,
+                    imageTimeout: 15000,
+                    onclone: (clonedDoc) => {
+                        const clonedElement = clonedDoc.querySelector('.print-receipt-content');
+                        if (clonedElement) {
+                            clonedElement.style.width = elementWidth + 'px';
+                            clonedElement.style.maxWidth = elementWidth + 'px';
+                            clonedElement.style.margin = '0';
+                            clonedElement.style.padding = '32px';
+                            clonedElement.style.boxSizing = 'border-box';
+                            
+                            // Ensure header layout is horizontal
+                            const header = clonedElement.querySelector('header');
+                            if (header) {
+                                header.style.display = 'flex';
+                                header.style.flexDirection = 'row';
+                                header.style.justifyContent = 'space-between';
+                            }
+                            
+                            // Ensure logo images load
+                            const images = clonedElement.querySelectorAll('img');
+                            images.forEach(img => {
+                                if (img.src && !img.complete) {
+                                    // Force load
+                                    const src = img.src;
+                                    img.src = '';
+                                    img.src = src;
+                                }
+                            });
+                        }
+                    }
+                });
+
+                // Restore original styles
+                element.style.width = originalWidth;
+                element.style.maxWidth = originalMaxWidth;
+                element.style.margin = originalMargin;
+                element.style.padding = originalPadding;
+
+                const imgData = canvas.toDataURL('image/png', 1.0);
+                const a4Width = 210; // mm
+                const a4Height = 297; // mm
+
+                const pixelsPerMm = canvas.width / a4Width;
+                const imgWidthMm = a4Width;
+                const imgHeightMm = canvas.height / pixelsPerMm;
+
+                // Create PDF
+                const pdf = new jsPDF({
+                    orientation: 'portrait',
+                    unit: 'mm',
+                    format: 'a4'
+                });
+
+                // Add image to PDF - single page (receipts are usually short)
+                // Only add single page, receipts shouldn't need multiple pages
+                pdf.addImage(imgData, 'PNG', 0, 0, imgWidthMm, Math.min(imgHeightMm, a4Height), undefined, 'FAST');
+
+                const pdfBlob = pdf.output('blob');
+                const file = new File([pdfBlob], filename, { type: 'application/pdf' });
+
+                if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+                    await navigator.share({
+                        title: `Payment Receipt`,
+                        text: `Payment Receipt for ${getClientName(selectedPaymentForView)}`,
+                        files: [file]
+                    });
+                } else {
+                    // Fallback: download
+                    const url = URL.createObjectURL(pdfBlob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = filename;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                    alert('PDF generated! Check your downloads folder.');
+                }
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    console.error('PDF generation error:', error);
+                    alert('Failed to generate PDF. Please try again.');
+                }
+            } finally {
+                setIsGeneratingReceiptPDF(false);
+            }
+        } else {
+            // For web, use print dialog
+            window.print();
+        }
     };
 
     const handleClientChange = (clientId) => {
@@ -1022,7 +1256,7 @@ const PaymentsPage = () => {
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                            {getFilteredPayments().map(payment => {
+                            {filteredPayments.map(payment => {
                                 const clientName = getClientName(payment);
                                 const docInfo = payment.documentId ? getDocumentInfo(payment.documentId) : null;
                                 const isAllocated = payment.settledToDocument;
@@ -1119,13 +1353,13 @@ const PaymentsPage = () => {
                 </div>
 
                 {/* Load More Button */}
-                {!paymentSearchTerm && payments.filter(p => clientFilter === 'all' || p.clientId === clientFilter).length > displayedPaymentsLimit && (
+                {!paymentSearchTerm && filteredPayments.length < payments.filter(p => clientFilter === 'all' || p.clientId === clientFilter).length && (
                     <div className="px-4 sm:px-6 py-4 border-t border-gray-200 text-center">
                         <button
                             onClick={() => setDisplayedPaymentsLimit(prev => prev + 20)}
                             className="w-full sm:w-auto px-6 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm sm:text-base"
                         >
-                            Load More Payments ({payments.filter(p => clientFilter === 'all' || p.clientId === clientFilter).length - displayedPaymentsLimit} remaining)
+                            Load More Payments ({payments.filter(p => clientFilter === 'all' || p.clientId === clientFilter).length - filteredPayments.length} remaining)
                         </button>
                     </div>
                 )}
@@ -1158,25 +1392,56 @@ const PaymentsPage = () => {
                             }
                         }
                     `}</style>
-                    <div className="bg-white rounded-lg shadow-2xl w-[210mm] max-h-[90vh] overflow-y-auto print-receipt" onClick={(e) => e.stopPropagation()}>
+                    <div className="bg-white rounded-lg shadow-2xl w-full max-w-[794px] max-h-[90vh] overflow-y-auto print-receipt" onClick={(e) => e.stopPropagation()}>
                         {/* Receipt Header */}
                         <div className="bg-indigo-600 text-white px-8 py-6 flex justify-between items-center print:bg-white print:text-black print:border-b-2 print:border-gray-300 print-hidden">
                             <h2 className="text-xl font-bold">Payment Receipt</h2>
-                            <button onClick={() => setShowPaymentReceipt(false)} className="text-white hover:text-gray-200">
-                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
-                                </svg>
-                            </button>
+                            <div className="flex gap-2">
+                                {/* Show Share button for iOS standalone mode */}
+                                {(window.navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)) && navigator.share ? (
+                                    <button 
+                                        onClick={handleGenerateReceiptPDF}
+                                        disabled={isGeneratingReceiptPDF}
+                                        className="bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                    >
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                                        </svg>
+                                        {isGeneratingReceiptPDF ? 'Generating...' : 'Share PDF'}
+                                    </button>
+                                ) : null}
+                                <button onClick={() => window.print()} className="bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-lg transition-colors flex items-center gap-2">
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path>
+                                    </svg>
+                                    Print / PDF
+                                </button>
+                                <button onClick={() => setShowPaymentReceipt(false)} className="text-white hover:text-gray-200">
+                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
 
                         {/* Receipt Content */}
-                        <div className="p-12 print:p-0">
-                            {/* Company Header */}
-                            <div className="mb-8 pb-6 border-b-2 border-gray-300">
-                                <h3 className="text-3xl font-bold text-indigo-600 mb-1">Payment Receipt</h3>
-                                <p className="text-lg text-gray-700 font-medium mb-4">{userSettings?.companyName || 'Your Company Name'}</p>
-                                <p className="text-sm text-gray-600">Receipt #{selectedPaymentForView.id.substring(0, 8).toUpperCase()}</p>
-                            </div>
+                        <div ref={receiptPrintRef} className="print-receipt-content bg-white p-8" style={{ maxWidth: '794px', margin: '0 auto' }}>
+                            {/* Company Header with Logo */}
+                            <header className="flex flex-row justify-between items-start pb-4 border-b-2 border-gray-300 mb-6">
+                                <div className="flex-shrink-0">
+                                    {userSettings?.logoUrl ? (
+                                        <img src={userSettings.logoUrl} alt="Company Logo" className="h-12 w-auto" />
+                                    ) : (
+                                        <div className="text-2xl font-bold text-indigo-600">{userSettings?.companyName || 'Your Company'}</div>
+                                    )}
+                                    <p className="text-sm text-gray-600 mt-2">{userSettings?.companyAddress || ''}</p>
+                                    <p className="text-sm text-gray-600">{userSettings?.companyPhone || ''}</p>
+                                </div>
+                                <div className="text-right flex-shrink-0">
+                                    <h3 className="text-2xl font-bold text-indigo-600 mb-1">Payment Receipt</h3>
+                                    <p className="text-sm text-gray-600">Receipt #{selectedPaymentForView.id.substring(0, 8).toUpperCase()}</p>
+                                </div>
+                            </header>
 
                             {/* Payment Details */}
                             <div className="grid grid-cols-2 gap-6 mb-6">
@@ -1265,24 +1530,7 @@ const PaymentsPage = () => {
                                 <p className="mt-2">Generated on {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
                             </div>
 
-                            {/* Action Buttons */}
-                            <div className="flex justify-center space-x-4 print-hidden">
-                                <button
-                                    onClick={() => window.print()}
-                                    className="px-6 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors flex items-center"
-                                >
-                                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path>
-                                    </svg>
-                                    Print / Save as PDF
-                                </button>
-                                <button
-                                    onClick={() => setShowPaymentReceipt(false)}
-                                    className="px-6 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 transition-colors"
-                                >
-                                    Close
-                                </button>
-                            </div>
+                            {/* Action Buttons - Moved to top header */}
                         </div>
                     </div>
                 </div>

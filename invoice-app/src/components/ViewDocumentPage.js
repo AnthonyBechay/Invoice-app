@@ -56,19 +56,40 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
                 console.log('Capturing canvas...');
                 // A4 dimensions in pixels at 96 DPI (standard screen resolution)
                 // A4: 210mm x 297mm = 8.27" x 11.69" = 794px x 1123px at 96 DPI
-                const a4WidthPx = 794; // A4 width in pixels
-                const a4HeightPx = 1123; // A4 height in pixels (approximate)
+                const a4WidthPx = 794; // A4 width in pixels (210mm = 794px at 96 DPI)
                 
                 const element = printRef.current;
                 
-                // Temporarily set fixed A4 width for consistent capture
+                // Store original styles
                 const originalWidth = element.style.width;
                 const originalMaxWidth = element.style.maxWidth;
+                const originalMargin = element.style.margin;
+                
+                // Set fixed A4 width for consistent capture (matches browser print)
                 element.style.width = a4WidthPx + 'px';
                 element.style.maxWidth = a4WidthPx + 'px';
+                element.style.margin = '0';
+                element.style.padding = '32px'; // 8*4 = 32px padding
+                
+                // Force layout recalculation
+                element.offsetHeight; // Trigger reflow
+                
+                // Wait for logo image to load if present
+                const logoImg = element.querySelector('img');
+                if (logoImg && logoImg.src) {
+                    await new Promise((resolve, reject) => {
+                        if (logoImg.complete) {
+                            resolve();
+                        } else {
+                            logoImg.onload = resolve;
+                            logoImg.onerror = resolve; // Continue even if logo fails to load
+                            setTimeout(resolve, 500); // Timeout after 500ms
+                        }
+                    });
+                }
                 
                 // Wait for layout to update
-                await new Promise(resolve => setTimeout(resolve, 100));
+                await new Promise(resolve => setTimeout(resolve, 300));
                 
                 // Get the actual rendered dimensions
                 const elementWidth = element.offsetWidth || a4WidthPx;
@@ -90,12 +111,41 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
                     allowTaint: true,
                     imageTimeout: 15000,
                     onclone: (clonedDoc) => {
-                        // Ensure the cloned element maintains A4 width
+                        // Ensure the cloned element maintains A4 width and proper styling
                         const clonedElement = clonedDoc.querySelector('.print-area');
                         if (clonedElement) {
                             clonedElement.style.width = elementWidth + 'px';
                             clonedElement.style.maxWidth = elementWidth + 'px';
-                            clonedElement.style.padding = getComputedStyle(element).padding;
+                            clonedElement.style.margin = '0';
+                            clonedElement.style.padding = '32px';
+                            clonedElement.style.boxSizing = 'border-box';
+                            
+                            // Ensure header layout is horizontal with logo on left
+                            const header = clonedElement.querySelector('header');
+                            if (header) {
+                                header.style.display = 'flex';
+                                header.style.flexDirection = 'row';
+                                header.style.justifyContent = 'space-between';
+                                header.style.alignItems = 'flex-start';
+                            }
+                            
+                            // Ensure logo images load
+                            const images = clonedElement.querySelectorAll('img');
+                            images.forEach(img => {
+                                if (img.src && !img.complete) {
+                                    // Force load
+                                    const src = img.src;
+                                    img.src = '';
+                                    img.src = src;
+                                }
+                            });
+                            
+                            // Ensure grid layout is 2 columns for details section
+                            const detailsSection = clonedElement.querySelector('section.grid');
+                            if (detailsSection) {
+                                detailsSection.style.gridTemplateColumns = '1fr 1fr';
+                                detailsSection.style.display = 'grid';
+                            }
                         }
                     }
                 });
@@ -103,6 +153,7 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
                 // Restore original styles
                 element.style.width = originalWidth;
                 element.style.maxWidth = originalMaxWidth;
+                element.style.margin = originalMargin;
                 
                 console.log('Canvas captured:', canvas.width, 'x', canvas.height);
                 
@@ -131,15 +182,12 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
                 });
                 
                 console.log('Adding image to PDF...');
-                // Add image to PDF - fill full width, start at top
-                // If content is taller than A4, it will extend to multiple pages
-                let yPosition = 0;
+                // Add image to PDF - fill full width (A4 format)
+                // For content taller than A4, add multiple pages (only if actually needed)
                 const pageHeight = a4Height;
                 
-                // Add image to PDF - fill full width (A4 format)
-                // For content taller than A4, add multiple pages
                 if (imgHeightMm <= pageHeight) {
-                    // Single page - add image centered or at top
+                    // Single page - add image at top
                     pdf.addImage(imgData, 'PNG', 0, 0, imgWidthMm, imgHeightMm, undefined, 'FAST');
                 } else {
                     // Multiple pages needed - split image across pages
@@ -155,21 +203,30 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
                         const remainingHeight = imgHeightMm - yOffset;
                         const heightThisPage = Math.min(pageHeight, remainingHeight);
                         
+                        // Only proceed if we actually have content for this page
+                        if (heightThisPage <= 0) break;
+                        
                         // Calculate source canvas region for this page
                         const sourceY = (yOffset / imgHeightMm) * sourceHeight;
-                        const sourceHeightThisPage = (heightThisPage / imgHeightMm) * sourceHeight;
+                        const sourceHeightThisPage = Math.ceil((heightThisPage / imgHeightMm) * sourceHeight);
+                        
+                        // Ensure we don't exceed source canvas bounds
+                        if (sourceY >= sourceHeight) break;
                         
                         // Create temporary canvas for this page slice
                         const pageCanvas = document.createElement('canvas');
                         pageCanvas.width = sourceWidth;
-                        pageCanvas.height = sourceHeightThisPage;
+                        pageCanvas.height = Math.min(sourceHeightThisPage, sourceHeight - sourceY);
                         const ctx = pageCanvas.getContext('2d');
-                        ctx.drawImage(canvas, 0, sourceY, sourceWidth, sourceHeightThisPage, 0, 0, sourceWidth, sourceHeightThisPage);
+                        ctx.drawImage(canvas, 0, sourceY, sourceWidth, Math.min(sourceHeightThisPage, sourceHeight - sourceY), 0, 0, sourceWidth, Math.min(sourceHeightThisPage, sourceHeight - sourceY));
                         
                         const pageImgData = pageCanvas.toDataURL('image/png', 1.0);
                         pdf.addImage(pageImgData, 'PNG', 0, 0, imgWidthMm, heightThisPage, undefined, 'FAST');
                         
                         yOffset += heightThisPage;
+                        
+                        // Prevent infinite loop
+                        if (yOffset >= imgHeightMm) break;
                     }
                 }
                 
@@ -403,20 +460,20 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
                 </div>
             </div>
 
-            <div ref={printRef} className="print-area bg-white p-4 sm:p-8 md:p-12 rounded-lg shadow-lg">
+            <div ref={printRef} className="print-area bg-white p-8 rounded-lg shadow-lg" style={{ maxWidth: '794px', margin: '0 auto' }}>
                 {/* --- Header --- */}
-                <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-4 border-b-2 border-gray-200 gap-4">
-                    <div>
+                <header className="flex flex-row justify-between items-start pb-4 border-b-2 border-gray-200 mb-4">
+                    <div className="flex-shrink-0">
                         {companyInfo.logo}
                     </div>
-                    <div className="text-left sm:text-right w-full sm:w-auto">
-                        <h1 className="text-xl sm:text-2xl font-bold uppercase text-gray-800">{type}</h1>
+                    <div className="text-right flex-shrink-0">
+                        <h1 className="text-2xl font-bold uppercase text-gray-800">{type}</h1>
                         <p className="text-gray-500 text-sm">{documentNumber}</p>
                     </div>
                 </header>
 
                 {/* --- Details --- */}
-                <section className="grid grid-cols-1 sm:grid-cols-2 gap-4 my-4">
+                <section className="grid grid-cols-2 gap-4 my-4">
                     <div>
                         <h3 className="text-xs font-semibold text-gray-500 uppercase mb-1">Billed To</h3>
                         <p className="font-bold text-gray-800 text-sm">{client.name}</p>
