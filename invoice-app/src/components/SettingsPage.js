@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { doc, getDoc, setDoc, collection, query, where, getDocs, deleteDoc, writeBatch, limit } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { updateProfile, updateEmail, updatePassword, reauthenticateWithCredential, EmailAuthProvider, sendEmailVerification, verifyBeforeUpdateEmail } from 'firebase/auth';
+import { updateProfile, updateEmail, updatePassword, reauthenticateWithCredential, EmailAuthProvider, sendEmailVerification, verifyBeforeUpdateEmail, applyActionCode, checkActionCode } from 'firebase/auth';
 import { auth, db, storage } from '../firebase/config';
 import { repairMigratedPayments } from '../utils/paymentMigration';
 
@@ -190,22 +190,60 @@ const SettingsPage = () => {
                 return;
             }
 
+            // Validate email format
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(userEmail)) {
+                setFeedback({ type: 'error', message: 'Please enter a valid email address.' });
+                setLoading(false);
+                return;
+            }
+
             // Re-authenticate the user
             const credential = EmailAuthProvider.credential(auth.currentUser.email, currentPasswordForEmail);
             await reauthenticateWithCredential(auth.currentUser, credential);
             
-            // Use verifyBeforeUpdateEmail - sends verification email to new address
-            // User must click link in email before email change takes effect
-            await verifyBeforeUpdateEmail(auth.currentUser, userEmail);
-            
-            setFeedback({ 
-                type: 'success', 
-                message: `Verification email sent to ${userEmail}. Please check your inbox and click the verification link to complete the email change. The email will be updated after verification.` 
-            });
-            
-            // Clear password field after successful request
-            setCurrentPasswordForEmail('');
-            // Don't clear userEmail field so user can see what email they're changing to
+            // Try verifyBeforeUpdateEmail - this sends verification email
+            // Note: This requires action handler URL to be configured in Firebase Console
+            try {
+                await verifyBeforeUpdateEmail(auth.currentUser, userEmail, {
+                    // Action handler URL - Firebase will redirect here after verification
+                    // If your app is deployed, use the deployed URL, otherwise use current origin
+                    url: window.location.origin,
+                    handleCodeInApp: false // Set to true if you want to handle the code in-app
+                });
+                
+                setFeedback({ 
+                    type: 'success', 
+                    message: `✓ Verification email sent to ${userEmail}. Please check your inbox (and spam folder) and click the verification link to complete the email change. The email will be updated automatically after you verify it.` 
+                });
+                
+                // Clear password field after successful request
+                setCurrentPasswordForEmail('');
+            } catch (verifyError) {
+                console.error("verifyBeforeUpdateEmail error:", verifyError);
+                
+                // If verifyBeforeUpdateEmail fails with operation-not-allowed,
+                // it might mean email verification is disabled or action handler URL is not configured
+                if (verifyError.code === 'auth/operation-not-allowed') {
+                    setFeedback({ 
+                        type: 'error', 
+                        message: 'Email verification is not properly configured in Firebase. Please contact support or configure the Email Action Handler URL in Firebase Console under Authentication > Settings > Email Templates.' 
+                    });
+                } else {
+                    // Try alternative: use updateEmail directly (might work if verification settings allow it)
+                    try {
+                        await updateEmail(auth.currentUser, userEmail);
+                        setFeedback({ 
+                            type: 'success', 
+                            message: `Email updated successfully to ${userEmail}!` 
+                        });
+                        setCurrentPasswordForEmail('');
+                    } catch (updateError) {
+                        console.error("updateEmail error:", updateError);
+                        throw verifyError; // Throw original error
+                    }
+                }
+            }
         } catch (error) {
             console.error("Error updating email:", error);
             if (error.code === 'auth/requires-recent-login') {
@@ -217,9 +255,12 @@ const SettingsPage = () => {
             } else if (error.code === 'auth/invalid-email') {
                 setFeedback({ type: 'error', message: 'Please enter a valid email address.' });
             } else if (error.code === 'auth/operation-not-allowed') {
-                setFeedback({ type: 'error', message: 'Email verification is required. Please verify the new email address before changing it.' });
+                setFeedback({ 
+                    type: 'error', 
+                    message: 'Email verification is required but not configured. Please configure Email Action Handler URL in Firebase Console (Authentication > Settings > Email Templates) or contact your administrator.' 
+                });
             } else {
-                setFeedback({ type: 'error', message: `Failed to send verification email: ${error.message}` });
+                setFeedback({ type: 'error', message: `Failed to update email: ${error.message}. Please try again or contact support.` });
             }
         } finally {
             setLoading(false);
@@ -551,8 +592,11 @@ const SettingsPage = () => {
                                 <p className="text-sm text-blue-700 mb-2">
                                     <strong>Current Email:</strong> {auth.currentUser?.email}
                                 </p>
-                                <p className="text-xs text-blue-600">
-                                    <strong>Note:</strong> Firebase will send a verification email to your new address. The email change will only take effect after you click the verification link in that email.
+                                <p className="text-xs text-blue-600 mb-2">
+                                    <strong>Note:</strong> Firebase will send a verification email to your new address. Check your inbox (and spam folder) for the verification link. The email change will only take effect after you click that link.
+                                </p>
+                                <p className="text-xs text-orange-600">
+                                    <strong>⚠️ Troubleshooting:</strong> If you don&apos;t receive the verification email, check that Email Action Handler URL is configured in Firebase Console (Authentication &gt; Settings &gt; Email Templates).
                                 </p>
                             </div>
                             <div className="space-y-4">
