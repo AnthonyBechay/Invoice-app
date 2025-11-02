@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, query, where, onSnapshot, doc, updateDoc, deleteDoc, addDoc, getDocs, limit, orderBy } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, updateDoc, deleteDoc, addDoc, getDocs, getDoc, limit, orderBy } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
 import { useDebounce } from '../hooks/useDebounce';
 import { TableSkeleton, ListItemSkeleton } from './LoadingSkeleton';
@@ -30,6 +30,25 @@ const InvoicesPage = ({ navigateTo }) => {
     const [payments, setPayments] = useState([]);
     const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
 
+    // Calculate payment status (moved outside useEffect for reuse in useMemo)
+    const getPaymentStatus = (invoice) => {
+        const totalPaid = invoice.totalPaid || 0;
+        const total = invoice.total || 0;
+
+        if (totalPaid >= total) {
+            return { status: 'paid', label: 'Paid', color: 'bg-green-100 text-green-800' };
+        } else if (totalPaid > 0) {
+            return { status: 'partial', label: `Partial ($${totalPaid.toFixed(2)})`, color: 'bg-yellow-100 text-yellow-800' };
+        } else {
+            const dateObj = invoice.date?.toDate ? invoice.date.toDate() : new Date(invoice.date);
+            const daysSinceIssued = Math.floor((new Date() - dateObj) / (1000 * 60 * 60 * 24));
+            if (daysSinceIssued > 30) {
+                return { status: 'overdue', label: 'Overdue', color: 'bg-red-100 text-red-800' };
+            }
+            return { status: 'unpaid', label: 'Unpaid', color: 'bg-gray-100 text-gray-800' };
+        }
+    };
+
     useEffect(() => {
         if (!auth.currentUser) return;
 
@@ -56,24 +75,6 @@ const InvoicesPage = ({ navigateTo }) => {
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const activeDocs = [];
             const cancelledDocs = [];
-            
-            // Helper function to get payment status (defined before sorting)
-            const getPaymentStatus = (invoice) => {
-                const totalPaid = invoice.totalPaid || 0;
-                const total = invoice.total || 0;
-
-                if (totalPaid >= total) {
-                    return { status: 'paid', label: 'Paid', color: 'bg-green-100 text-green-800' };
-                } else if (totalPaid > 0) {
-                    return { status: 'partial', label: `Partial ($${totalPaid.toFixed(2)})`, color: 'bg-yellow-100 text-yellow-800' };
-                } else {
-                    const daysSinceIssued = Math.floor((new Date() - invoice.date.toDate()) / (1000 * 60 * 60 * 24));
-                    if (daysSinceIssued > 30) {
-                        return { status: 'overdue', label: 'Overdue', color: 'bg-red-100 text-red-800' };
-                    }
-                    return { status: 'unpaid', label: 'Unpaid', color: 'bg-gray-100 text-gray-800' };
-                }
-            };
 
             querySnapshot.forEach((doc) => {
                 const data = { id: doc.id, ...doc.data() };
@@ -130,24 +131,6 @@ const InvoicesPage = ({ navigateTo }) => {
     const getClientBalance = (clientId) => {
         const clientPayments = payments.filter(p => p.clientId === clientId && !p.settledToDocument);
         return clientPayments.reduce((sum, p) => sum + p.amount, 0);
-    };
-
-    // Calculate payment status
-    const getPaymentStatus = (invoice) => {
-        const totalPaid = invoice.totalPaid || 0;
-        const total = invoice.total || 0;
-
-        if (totalPaid >= total) {
-            return { status: 'paid', label: 'Paid', color: 'bg-green-100 text-green-800' };
-        } else if (totalPaid > 0) {
-            return { status: 'partial', label: `Partial ($${totalPaid.toFixed(2)})`, color: 'bg-yellow-100 text-yellow-800' };
-        } else {
-            const daysSinceIssued = Math.floor((new Date() - invoice.date.toDate()) / (1000 * 60 * 60 * 24));
-            if (daysSinceIssued > 30) {
-                return { status: 'overdue', label: 'Overdue', color: 'bg-red-100 text-red-800' };
-            }
-            return { status: 'unpaid', label: 'Unpaid', color: 'bg-gray-100 text-gray-800' };
-        }
     };
 
     // Handle payment modal
@@ -285,18 +268,18 @@ const InvoicesPage = ({ navigateTo }) => {
             const paymentsSnapshot = await getDocs(paymentsQuery);
             
             let totalPaid = 0;
-            paymentsSnapshot.forEach(doc => {
-                totalPaid += doc.data().amount;
+            paymentsSnapshot.forEach(paymentDoc => {
+                totalPaid += paymentDoc.data().amount;
             });
 
-            // Update the document
+            // Update the document - get the invoice to check total
             const documentRef = doc(db, `documents/${auth.currentUser.uid}/userDocuments`, documentId);
-            const document = await getDocs(query(collection(db, `documents/${auth.currentUser.uid}/userDocuments`), where('__name__', '==', documentId)));
-            const docData = document.docs[0]?.data();
+            const invoiceDoc = await getDoc(documentRef);
+            const invoiceData = invoiceDoc.data();
             
             await updateDoc(documentRef, {
                 totalPaid: totalPaid,
-                paid: totalPaid >= (docData?.total || 0),
+                paid: totalPaid >= (invoiceData?.total || 0),
                 lastPaymentDate: new Date(),
                 updatedAt: new Date()
             });
@@ -397,17 +380,19 @@ const InvoicesPage = ({ navigateTo }) => {
     const filteredInvoices = useMemo(() => {
         return invoices.filter(doc => {
             const search = debouncedSearchQuery.toLowerCase();
-        const dateStr = doc.date.toDate().toLocaleDateString();
-        const paymentStatus = getPaymentStatus(doc);
+            const dateObj = doc.date?.toDate ? doc.date.toDate() : new Date(doc.date);
+            const dateStr = dateObj.toLocaleDateString();
+            const paymentStatus = getPaymentStatus(doc);
 
-        return (
-            doc.documentNumber.toLowerCase().includes(search) ||
-            doc.client.name.toLowerCase().includes(search) ||
-            dateStr.includes(search) ||
-            doc.total.toString().includes(search) ||
-            paymentStatus.label.toLowerCase().includes(search) ||
-            (doc.proformaNumber && doc.proformaNumber.toLowerCase().includes(search))
-        );
+            return (
+                doc.documentNumber.toLowerCase().includes(search) ||
+                doc.client.name.toLowerCase().includes(search) ||
+                dateStr.includes(search) ||
+                doc.total.toString().includes(search) ||
+                paymentStatus.label.toLowerCase().includes(search) ||
+                (doc.proformaNumber && doc.proformaNumber.toLowerCase().includes(search))
+            );
+        });
     }, [invoices, debouncedSearchQuery]);
 
     // If searching, show all results; otherwise limit to displayLimit (default 30)
