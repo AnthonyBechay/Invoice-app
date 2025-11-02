@@ -303,7 +303,7 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
             } catch (error) {
                 console.error('Print error on iOS:', error);
                 // If print fails, suggest using Share button
-                alert('Print not available. Please use the "Share / Save PDF" button above.');
+                alert('Print not available. Please use the "Share / Save PDF horse" button above.');
             }
             return;
         }
