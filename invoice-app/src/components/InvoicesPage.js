@@ -441,10 +441,17 @@ const InvoicesPage = ({ navigateTo }) => {
 
             {/* Payment Summary - Only show unpaid */}
             <div className="grid grid-cols-1 md:grid-cols-1 gap-4 mb-6">
-                <div className="bg-red-50 p-4 rounded-lg">
-                    <p className="text-sm text-red-600">Total Outstanding (Unpaid)</p>
-                    <p className="text-2xl font-bold text-red-800">${totalUnpaidAmount.toFixed(2)}</p>
-                </div>
+                {loading ? (
+                    <div className="bg-red-50 p-4 rounded-lg animate-pulse">
+                        <div className="h-4 bg-red-200 rounded w-1/2 mb-2"></div>
+                        <div className="h-8 bg-red-200 rounded w-3/4"></div>
+                    </div>
+                ) : (
+                    <div className="bg-red-50 p-4 rounded-lg">
+                        <p className="text-sm text-red-600">Total Outstanding (Unpaid)</p>
+                        <p className="text-2xl font-bold text-red-800">${totalUnpaidAmount.toFixed(2)}</p>
+                    </div>
+                )}
             </div>
 
             <div className="bg-white p-6 rounded-lg shadow-lg">

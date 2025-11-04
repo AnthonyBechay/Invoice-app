@@ -40,7 +40,7 @@ const PaymentsPage = () => {
     const [selectedPaymentForView, setSelectedPaymentForView] = useState(null);
     const [showPaymentReceipt, setShowPaymentReceipt] = useState(false);
     const [paymentSearchTerm, setPaymentSearchTerm] = useState('');
-    const [displayedPaymentsLimit, setDisplayedPaymentsLimit] = useState(20);
+    const [displayedPaymentsLimit, setDisplayedPaymentsLimit] = useState(20); // Show first 20, can load more
     const [userSettings, setUserSettings] = useState(null);
     const [isGeneratingReceiptPDF, setIsGeneratingReceiptPDF] = useState(false);
     const receiptPrintRef = useRef(null);
@@ -83,91 +83,100 @@ const PaymentsPage = () => {
             try {
                 if (!auth.currentUser) return;
 
-                // Check migration status first (lightweight check)
-                const migrationCheck = await verifyMigration(auth.currentUser.uid);
-                setMigrationStatus(migrationCheck);
+                // OPTIMIZATION: Fetch all data in PARALLEL instead of sequentially
+                const fetchPromises = [];
 
-                // Fetch clients (usually small dataset) - use snapshot for real-time updates
-                // OPTIMIZATION: Limit to reasonable number of clients
-                try {
-                    const clientsQuery = query(
-                        collection(db, `clients/${auth.currentUser.uid}/userClients`),
-                        orderBy('name'),
-                        firestoreLimit(500) // Limit for very large client lists
-                    );
-                    const clientsSnapshot = await getDocs(clientsQuery);
-                    const clientsData = clientsSnapshot.docs.map(doc => ({
-                        id: doc.id,
-                        ...doc.data()
-                    }));
-                    setClients(clientsData);
-                } catch (error) {
-                    // Fallback if index not available
-                    const clientsQuery = query(
-                        collection(db, `clients/${auth.currentUser.uid}/userClients`),
-                        firestoreLimit(500)
-                    );
-                    const clientsSnapshot = await getDocs(clientsQuery);
-                    const clientsData = clientsSnapshot.docs.map(doc => ({
-                        id: doc.id,
-                        ...doc.data()
-                    })).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-                    setClients(clientsData);
-                }
-
-                // Fetch documents with limit and filter in memory (no index required)
-                // OPTIMIZATION: Limit initial load to improve performance
-                const documentsQuery = query(
-                    collection(db, `documents/${auth.currentUser.uid}/userDocuments`),
-                    orderBy('date', 'desc'),
-                    firestoreLimit(200) // Limit to recent documents
+                // 1. Check migration status (deferred - only if needed)
+                fetchPromises.push(
+                    verifyMigration(auth.currentUser.uid)
+                        .then(status => setMigrationStatus(status))
+                        .catch(err => console.error('Migration check failed:', err))
                 );
-                
-                try {
-                    const documentsSnapshot = await getDocs(documentsQuery);
-                    const documentsData = documentsSnapshot.docs
-                        .map(doc => ({
-                            id: doc.id,
-                            ...doc.data()
-                        }))
-                        .filter(doc => doc.type === 'invoice') // Filter invoices in memory
-                        .sort((a, b) => {
-                            const dateA = a.date?.toDate ? a.date.toDate() : new Date(a.date);
-                            const dateB = b.date?.toDate ? b.date.toDate() : new Date(b.date);
-                            return dateB - dateA;
-                        });
-                    setDocuments(documentsData);
-                } catch (error) {
-                    // Fallback if index not available
-                    console.warn('Documents query failed, using fallback:', error);
-                    const fallbackQuery = query(
-                        collection(db, `documents/${auth.currentUser.uid}/userDocuments`),
-                        firestoreLimit(200)
-                    );
-                    const documentsSnapshot = await getDocs(fallbackQuery);
-                    const documentsData = documentsSnapshot.docs
-                        .map(doc => ({
-                            id: doc.id,
-                            ...doc.data()
-                        }))
-                        .filter(doc => doc.type === 'invoice')
-                        .sort((a, b) => {
-                            const dateA = a.date?.toDate ? a.date.toDate() : new Date(a.date);
-                            const dateB = b.date?.toDate ? b.date.toDate() : new Date(b.date);
-                            return dateB - dateA;
-                        });
-                    setDocuments(documentsData);
-                }
 
-                // Listen to payments (real-time) - this is the main data source
-                // CRITICAL FIX: Filter payments by current user to ensure data isolation
-                // Note: We sort in JavaScript to avoid needing a Firebase composite index
-                // OPTIMIZATION: Limit initial load and sort in JavaScript
+                // 2. Fetch clients in parallel
+                fetchPromises.push(
+                    (async () => {
+                        try {
+                            const clientsQuery = query(
+                                collection(db, `clients/${auth.currentUser.uid}/userClients`),
+                                orderBy('name'),
+                                firestoreLimit(200) // REDUCED: From 500 to 200 for faster load
+                            );
+                            const clientsSnapshot = await getDocs(clientsQuery);
+                            const clientsData = clientsSnapshot.docs.map(doc => ({
+                                id: doc.id,
+                                ...doc.data()
+                            }));
+                            setClients(clientsData);
+                        } catch (error) {
+                            // Fallback if index not available
+                            const clientsQuery = query(
+                                collection(db, `clients/${auth.currentUser.uid}/userClients`),
+                                firestoreLimit(200)
+                            );
+                            const clientsSnapshot = await getDocs(clientsQuery);
+                            const clientsData = clientsSnapshot.docs.map(doc => ({
+                                id: doc.id,
+                                ...doc.data()
+                            })).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+                            setClients(clientsData);
+                        }
+                    })()
+                );
+
+                // 3. Fetch documents in parallel - REDUCED LIMIT
+                fetchPromises.push(
+                    (async () => {
+                        try {
+                            const documentsQuery = query(
+                                collection(db, `documents/${auth.currentUser.uid}/userDocuments`),
+                                orderBy('date', 'desc'),
+                                firestoreLimit(50) // REDUCED: From 200 to 50 - only need recent invoices for dropdown
+                            );
+                            const documentsSnapshot = await getDocs(documentsQuery);
+                            const documentsData = documentsSnapshot.docs
+                                .map(doc => ({
+                                    id: doc.id,
+                                    ...doc.data()
+                                }))
+                                .filter(doc => doc.type === 'invoice') // Filter invoices in memory
+                                .sort((a, b) => {
+                                    const dateA = a.date?.toDate ? a.date.toDate() : new Date(a.date);
+                                    const dateB = b.date?.toDate ? b.date.toDate() : new Date(b.date);
+                                    return dateB - dateA;
+                                });
+                            setDocuments(documentsData);
+                        } catch (error) {
+                            // Fallback if index not available
+                            console.warn('Documents query failed, using fallback:', error);
+                            const fallbackQuery = query(
+                                collection(db, `documents/${auth.currentUser.uid}/userDocuments`),
+                                firestoreLimit(50)
+                            );
+                            const documentsSnapshot = await getDocs(fallbackQuery);
+                            const documentsData = documentsSnapshot.docs
+                                .map(doc => ({
+                                    id: doc.id,
+                                    ...doc.data()
+                                }))
+                                .filter(doc => doc.type === 'invoice')
+                                .sort((a, b) => {
+                                    const dateA = a.date?.toDate ? a.date.toDate() : new Date(a.date);
+                                    const dateB = b.date?.toDate ? b.date.toDate() : new Date(b.date);
+                                    return dateB - dateA;
+                                });
+                            setDocuments(documentsData);
+                        }
+                    })()
+                );
+
+                // 4. Set up payments listener IMMEDIATELY (in parallel with other fetches)
+                // OPTIMIZATION: Don't wait for clients/documents - set up listener right away
                 const paymentsQuery = query(
                     collection(db, 'payments'),
                     where('userId', '==', auth.currentUser.uid),
-                    orderBy('paymentDate', 'desc'), // Primary sort
-                    firestoreLimit(100) // Limit initial load for better performance
+                    orderBy('paymentDate', 'desc'),
+                    firestoreLimit(50) // REDUCED: From 100 to 50 for faster initial load
                 );
 
                 unsubscribePayments = onSnapshot(paymentsQuery, (snapshot) => {
@@ -175,14 +184,9 @@ const PaymentsPage = () => {
                         id: doc.id,
                         ...doc.data()
                     }));
-                    // Additional sorting by paymentDate in JavaScript (already sorted by query, but ensure consistency)
-                    paymentsData.sort((a, b) => {
-                        const dateA = a.paymentDate?.toDate ? a.paymentDate.toDate() : new Date(a.paymentDate);
-                        const dateB = b.paymentDate?.toDate ? b.paymentDate.toDate() : new Date(b.paymentDate);
-                        return dateB - dateA;
-                    });
+                    // No need for additional sorting - already sorted by query
                     setPayments(paymentsData);
-                    setLoading(false);
+                    setLoading(false); // Set loading false as soon as payments arrive
                 }, (error) => {
                     console.error('Error fetching payments:', error);
                     // Fallback: fetch without orderBy if index not available
@@ -190,13 +194,14 @@ const PaymentsPage = () => {
                         const fallbackQuery = query(
                             collection(db, 'payments'),
                             where('userId', '==', auth.currentUser.uid),
-                            firestoreLimit(100)
+                            firestoreLimit(50) // REDUCED: Match primary query limit
                         );
                         const fallbackUnsubscribe = onSnapshot(fallbackQuery, (snapshot) => {
                             const paymentsData = snapshot.docs.map(doc => ({
                                 id: doc.id,
                                 ...doc.data()
                             }));
+                            // Sort in JavaScript since index not available
                             paymentsData.sort((a, b) => {
                                 const dateA = a.paymentDate?.toDate ? a.paymentDate.toDate() : new Date(a.paymentDate);
                                 const dateB = b.paymentDate?.toDate ? b.paymentDate.toDate() : new Date(b.paymentDate);
@@ -210,6 +215,9 @@ const PaymentsPage = () => {
                         setLoading(false);
                     }
                 });
+
+                // Note: We don't await fetchPromises here - let clients/documents load in background
+                // This allows the page to become interactive as soon as payments data arrives
 
             } catch (error) {
                 console.error('Error fetching data:', error);

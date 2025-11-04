@@ -316,7 +316,7 @@ const ProformasPage = ({ navigateTo }) => {
             <div className="mb-6">
                 <input
                     type="text"
-                    placeholder="Search by number, client, date, amount, or payment status..."
+                    placeholder="Search by proforma number, client name, date, or amount..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -325,16 +325,33 @@ const ProformasPage = ({ navigateTo }) => {
 
             {/* Proforma Summary */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <div className="bg-yellow-50 p-4 rounded-lg">
-                    <p className="text-sm text-yellow-600">Total Proforma Value</p>
-                    <p className="text-2xl font-bold text-yellow-800">${totalAmount.toFixed(2)}</p>
-                    <p className="text-xs text-yellow-600 mt-1">Active proformas (not yet converted to invoices)</p>
-                </div>
-                <div className="bg-blue-50 p-4 rounded-lg">
-                    <p className="text-sm text-blue-600">Total Active Proformas</p>
-                    <p className="text-2xl font-bold text-blue-800">{displayedProformas.length}</p>
-                    <p className="text-xs text-blue-600 mt-1">Convert proformas to invoices to enable payments</p>
-                </div>
+                {loading ? (
+                    <>
+                        <div className="bg-yellow-50 p-4 rounded-lg animate-pulse">
+                            <div className="h-4 bg-yellow-200 rounded w-1/2 mb-2"></div>
+                            <div className="h-8 bg-yellow-200 rounded w-3/4 mb-2"></div>
+                            <div className="h-3 bg-yellow-200 rounded w-full"></div>
+                        </div>
+                        <div className="bg-blue-50 p-4 rounded-lg animate-pulse">
+                            <div className="h-4 bg-blue-200 rounded w-1/2 mb-2"></div>
+                            <div className="h-8 bg-blue-200 rounded w-1/3 mb-2"></div>
+                            <div className="h-3 bg-blue-200 rounded w-full"></div>
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        <div className="bg-yellow-50 p-4 rounded-lg">
+                            <p className="text-sm text-yellow-600">Total Proforma Value</p>
+                            <p className="text-2xl font-bold text-yellow-800">${totalAmount.toFixed(2)}</p>
+                            <p className="text-xs text-yellow-600 mt-1">Active proformas (not yet converted to invoices)</p>
+                        </div>
+                        <div className="bg-blue-50 p-4 rounded-lg">
+                            <p className="text-sm text-blue-600">Total Active Proformas</p>
+                            <p className="text-2xl font-bold text-blue-800">{displayedProformas.length}</p>
+                            <p className="text-xs text-blue-600 mt-1">Convert proformas to invoices to enable payments</p>
+                        </div>
+                    </>
+                )}
             </div>
 
             <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6">
@@ -358,7 +375,7 @@ const ProformasPage = ({ navigateTo }) => {
             <div className="bg-white p-6 rounded-lg shadow-lg">
                 <div className="overflow-x-auto">
                     {loading ? (
-                        <TableSkeleton rows={5} columns={6} />
+                        <TableSkeleton rows={5} columns={5} />
                     ) : displayedProformas.length === 0 ? (
                         <p className="text-gray-500">
                             {debouncedSearchQuery ? 'No proformas found matching your search.' : 'No proformas found.'}
