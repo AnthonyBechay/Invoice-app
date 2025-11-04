@@ -33,5 +33,15 @@ service cloud.firestore {
     match /stock/{userId}/items/{itemId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
+
+    // Expenses - Personal expense tracking
+    match /expenses/{userId}/userExpenses/{expenseId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Expense Categories
+    match /expenses/{userId}/categories/{categoryId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
   }
 }

@@ -570,7 +570,7 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
 
                 {/* --- Footer --- */}
                 <footer className="pt-4 mt-4 border-t-2 border-gray-200 text-center text-gray-500 text-xs">
-                    <p>Thank you for your business!</p>
+                    <p>{userSettings?.footerMessage || 'Thank you for your business!'}</p>
                     <p>{companyInfo.name} | {companyInfo.address} | {companyInfo.phone}</p>
                 </footer>
             </div>

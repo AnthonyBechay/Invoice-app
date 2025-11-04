@@ -14,12 +14,13 @@ import InvoicesPage from './components/InvoicesPage';
 import SettingsPage from './components/SettingsPage';
 import AccountingPage from './components/AccountingPage';
 import PaymentsPage from './components/PaymentsPage';
+import ExpensesPage from './components/ExpensesPage';
 import Sidebar from './components/Sidebar';
 
 export default function App() {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [page, setPage] = useState('dashboard'); // 'login', 'register', 'dashboard', 'proformas', 'invoices', 'payments', 'stock', 'clients', 'newDocument', 'viewDocument', 'settings', 'accounting'
+    const [page, setPage] = useState('dashboard'); // 'login', 'register', 'dashboard', 'proformas', 'invoices', 'payments', 'expenses', 'stock', 'clients', 'newDocument', 'viewDocument', 'settings', 'accounting'
     const [editingDocument, setEditingDocument] = useState(null);
     const [isSidebarOpen, setSidebarOpen] = useState(false);
 
@@ -82,6 +83,7 @@ export default function App() {
                             {page === 'proformas' && <ProformasPage navigateTo={navigateTo} />}
                             {page === 'invoices' && <InvoicesPage navigateTo={navigateTo} />}
                             {page === 'payments' && <PaymentsPage />}
+                            {page === 'expenses' && <ExpensesPage />}
                             {page === 'stock' && <StockPage />}
                             {page === 'clients' && <ClientsPage />}
                             {page === 'newDocument' && <NewDocumentPage navigateTo={navigateTo} documentToEdit={editingDocument} />}

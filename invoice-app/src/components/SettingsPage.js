@@ -10,6 +10,7 @@ const SettingsPage = () => {
     const [companyAddress, setCompanyAddress] = useState('');
     const [companyPhone, setCompanyPhone] = useState('');
     const [companyVatNumber, setCompanyVatNumber] = useState('');
+    const [footerMessage, setFooterMessage] = useState('');
     const [logoUrl, setLogoUrl] = useState('');
     const [imageFile, setImageFile] = useState(null);
     const [uploadProgress, setUploadProgress] = useState(0);
@@ -42,6 +43,7 @@ const SettingsPage = () => {
                     setCompanyAddress(settings.companyAddress || '');
                     setCompanyPhone(settings.companyPhone || '');
                     setCompanyVatNumber(settings.companyVatNumber || '');
+                    setFooterMessage(settings.footerMessage || 'Thank you for your business!');
                     setLogoUrl(settings.logoUrl || '');
                 }
             } catch (error) {
@@ -130,6 +132,7 @@ const SettingsPage = () => {
                 companyAddress,
                 companyPhone,
                 companyVatNumber,
+                footerMessage: footerMessage || 'Thank you for your business!',
                 logoUrl: newLogoUrl
             }, { merge: true });
 
@@ -523,6 +526,18 @@ const SettingsPage = () => {
                             placeholder="123456789"
                             className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                         />
+                    </div>
+                    <div>
+                        <label htmlFor="footerMessage" className="block text-sm font-medium text-gray-700">Invoice Footer Message</label>
+                        <textarea
+                            id="footerMessage"
+                            value={footerMessage}
+                            onChange={(e) => setFooterMessage(e.target.value)}
+                            rows={3}
+                            placeholder="Thank you for your business!"
+                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">This message will appear at the bottom of all invoices and proformas.</p>
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700">Company Logo</label>
