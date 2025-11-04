@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, getDocs, orderBy, deleteDoc, limit as firestoreLimit, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
 import { migratePayments, verifyMigration } from '../utils/paymentMigration';
+import { TableSkeleton } from './LoadingSkeleton';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 
