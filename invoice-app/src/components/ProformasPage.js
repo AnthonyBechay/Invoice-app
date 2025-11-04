@@ -25,12 +25,12 @@ const ProformasPage = ({ navigateTo }) => {
     useEffect(() => {
         if (!auth.currentUser) return;
         
-        // Fetch all proformas first, then filter in memory
+        // Fetch proformas with Firebase index optimization
         const proformaQuery = query(
             collection(db, `documents/${auth.currentUser.uid}/userDocuments`),
-            where('type', '==', 'proforma')
-            // orderBy('date', 'desc'), // COMMENTED OUT: Requires Firebase index - will enable later
-            // limit(50) // Limit initial load - will enable after index is added
+            where('type', '==', 'proforma'),
+            orderBy('date', 'desc'),
+            limit(50)
         );
         
         const unsubscribe = onSnapshot(proformaQuery, (querySnapshot) => {
