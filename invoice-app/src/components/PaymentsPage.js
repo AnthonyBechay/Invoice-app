@@ -853,10 +853,6 @@ const PaymentsPage = () => {
         }
     };
 
-    if (loading) {
-        return <div className="flex justify-center items-center h-64">Loading payments...</div>;
-    }
-
     return (
         <div className="max-w-7xl mx-auto">
             <div className="mb-6">
@@ -1142,9 +1138,16 @@ const PaymentsPage = () => {
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
-                                {clients
-                                    .filter(client => getClientAccountBalance(client.id) > 0)
-                                    .map(client => {
+                                {loading ? (
+                                    <tr>
+                                        <td colSpan="5">
+                                            <TableSkeleton rows={3} columns={5} />
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    clients
+                                        .filter(client => getClientAccountBalance(client.id) > 0)
+                                        .map(client => {
                                         const balance = getClientAccountBalance(client.id);
                                         const outstanding = getClientOutstandingAmount(client.id);
                                         const unpaidInvoices = getClientDocuments(client.id).filter(doc => (doc.totalPaid || 0) < doc.total);
@@ -1178,8 +1181,9 @@ const PaymentsPage = () => {
                                                 </td>
                                             </tr>
                                         );
-                                    })}
-                                {clients.filter(client => getClientAccountBalance(client.id) > 0).length === 0 && (
+                                    })
+                                )}
+                                {!loading && clients.filter(client => getClientAccountBalance(client.id) > 0).length === 0 && (
                                     <tr>
                                         <td colSpan="5" className="px-6 py-4 text-center text-sm text-gray-500">
                                             No clients with unallocated balance
@@ -1196,7 +1200,7 @@ const PaymentsPage = () => {
             {clientFilter !== 'all' && (
                 <div className="bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-200 rounded-lg p-4 mb-6">
                     <h3 className="text-lg font-semibold text-indigo-900 mb-3">
-                        {clients.find(c => c.id === clientFilter)?.name || 'Client'} - Payment Summary
+                        {loading ? 'Loading...' : (clients.find(c => c.id === clientFilter)?.name || 'Client')} - Payment Summary
                     </h3>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="bg-white rounded-lg p-3 shadow-sm">
@@ -1256,7 +1260,20 @@ const PaymentsPage = () => {
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                            {filteredPayments.map(payment => {
+                            {loading ? (
+                                <tr>
+                                    <td colSpan="8">
+                                        <TableSkeleton rows={5} columns={8} />
+                                    </td>
+                                </tr>
+                            ) : filteredPayments.length === 0 ? (
+                                <tr>
+                                    <td colSpan="8" className="px-6 py-8 text-center text-gray-500">
+                                        {paymentSearchTerm ? 'No payments found matching your search.' : 'No payments found. Add your first payment above.'}
+                                    </td>
+                                </tr>
+                            ) : (
+                                filteredPayments.map(payment => {
                                 const clientName = getClientName(payment);
                                 const docInfo = payment.documentId ? getDocumentInfo(payment.documentId) : null;
                                 const isAllocated = payment.settledToDocument;
@@ -1347,7 +1364,7 @@ const PaymentsPage = () => {
                                         </td>
                                     </tr>
                                 );
-                            })}
+                            }))}
                         </tbody>
                     </table>
                 </div>
