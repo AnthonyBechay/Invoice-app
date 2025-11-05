@@ -209,10 +209,9 @@ const SettingsPage = () => {
             // Note: This requires action handler URL to be configured in Firebase Console
             try {
                 await verifyBeforeUpdateEmail(auth.currentUser, userEmail, {
-                    // Action handler URL - Firebase will redirect here after verification
-                    // If your app is deployed, use the deployed URL, otherwise use current origin
-                    url: window.location.origin,
-                    handleCodeInApp: false // Set to true if you want to handle the code in-app
+                    // Always use the deployed URL for reliable delivery and redirect
+                    url: 'https://invoice-app-xi-neon.vercel.app/',
+                    handleCodeInApp: false // Firebase completes the change, then redirects
                 });
                 
                 setFeedback({ 

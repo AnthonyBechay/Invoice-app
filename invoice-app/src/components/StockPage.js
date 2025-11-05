@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { collection, query, onSnapshot, addDoc, updateDoc, deleteDoc, doc, runTransaction, writeBatch, limit, orderBy } from 'firebase/firestore';
+import { collection, query, onSnapshot, addDoc, updateDoc, deleteDoc, doc, runTransaction, writeBatch } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
 import { useDebounce } from '../hooks/useDebounce';
 import { TableSkeleton } from './LoadingSkeleton';
@@ -56,18 +56,29 @@ const StockPage = () => {
 
     useEffect(() => {
         if (!auth.currentUser) return;
+        // Query without orderBy to get all items, including those without itemId
+        // We'll sort client-side to handle items without itemId gracefully
         const q = query(
-            collection(db, `items/${auth.currentUser.uid}/userItems`),
-            orderBy('itemId', 'asc'),
-            limit(100) // Limit initial load
+            collection(db, `items/${auth.currentUser.uid}/userItems`)
         );
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const itemsList = [];
             querySnapshot.forEach((doc) => {
                 itemsList.push({ id: doc.id, ...doc.data() });
             });
-            // Sort items by their auto-increment ID
-            itemsList.sort((a, b) => a.itemId - b.itemId);
+            // Sort items by their auto-increment ID (if exists), otherwise by document ID
+            itemsList.sort((a, b) => {
+                // If both have itemId, sort by itemId
+                if (a.itemId !== undefined && b.itemId !== undefined) {
+                    return a.itemId - b.itemId;
+                }
+                // If only a has itemId, a comes first
+                if (a.itemId !== undefined) return -1;
+                // If only b has itemId, b comes first
+                if (b.itemId !== undefined) return 1;
+                // If neither has itemId, sort by document ID
+                return a.id.localeCompare(b.id);
+            });
             setItems(itemsList);
             setLoading(false);
         }, (error) => {

@@ -29,8 +29,13 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
+    // Item Counter (for stock items)
+    match /counters/{userId}/itemCounter/{counterId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
     // Stock items
-    match /stock/{userId}/items/{itemId} {
+    match /items/{userId}/userItems/{itemId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
