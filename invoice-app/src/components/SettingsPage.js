@@ -206,12 +206,10 @@ const SettingsPage = () => {
             await reauthenticateWithCredential(auth.currentUser, credential);
             
             // Try verifyBeforeUpdateEmail - this sends verification email
-            // Note: This requires action handler URL to be configured in Firebase Console
+            // We rely on Firebase Console Email Action URL (no hardcoded URL here)
             try {
                 await verifyBeforeUpdateEmail(auth.currentUser, userEmail, {
-                    // Always use the deployed URL for reliable delivery and redirect
-                    url: 'https://invoice-app-xi-neon.vercel.app/',
-                    handleCodeInApp: false // Firebase completes the change, then redirects
+                    handleCodeInApp: false
                 });
                 
                 setFeedback({ 
@@ -648,6 +646,13 @@ const SettingsPage = () => {
                                     >
                                         {loading ? 'Updating Email...' : 'Update Email'}
                                     </button>
+                                <button
+                                    onClick={handleUpdateEmail}
+                                    disabled={loading || !currentPasswordForEmail || !userEmail || userEmail === auth.currentUser?.email}
+                                    className="ml-3 bg-gray-600 hover:bg-gray-700 text-white font-medium py-2 px-4 rounded-md disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    {loading ? 'Sending...' : 'Resend verification email'}
+                                </button>
                                 </div>
                             </div>
                         </div>
