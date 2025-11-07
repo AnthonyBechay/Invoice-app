@@ -215,3 +215,5 @@ If you have items in the wrong location or missing `itemId` fields:
 - `StockPage.js` - Stock items display component
 - `NewDocumentPage.js` - Document creation with item search
 
+
+
