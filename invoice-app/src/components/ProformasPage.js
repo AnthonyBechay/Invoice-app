@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, onSnapshot, getDocs, orderBy, limit, startAfter, deleteDoc, doc, updateDoc, addDoc, runTransaction } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
+import { onAuthStateChanged } from 'firebase/auth';
 import { useDebounce } from '../hooks/useDebounce';
 import { TableSkeleton } from './LoadingSkeleton';
 
@@ -23,115 +24,128 @@ const ProformasPage = ({ navigateTo }) => {
     const [convertingIds, setConvertingIds] = useState(new Set()); // Track converting proformas
 
     useEffect(() => {
-        if (!auth.currentUser) {
-            console.log("ProformasPage: No authenticated user");
-            setLoading(false);
-            return;
-        }
+        console.log("ProformasPage: useEffect running");
         
-        console.log("ProformasPage: Fetching proformas for user:", auth.currentUser.uid);
-        
-        // Fetch proformas with Firebase index optimization
-        const proformaQuery = query(
-            collection(db, `documents/${auth.currentUser.uid}/userDocuments`),
-            where('type', '==', 'proforma'),
-            orderBy('date', 'desc'),
-            limit(50)
-        );
-        
-        const unsubscribe = onSnapshot(proformaQuery, (querySnapshot) => {
-            console.log("ProformasPage: Received snapshot with", querySnapshot.size, "documents");
-            const activeDocs = [];
-            const deletedDocs = [];
+        // Use auth state listener to wait for auth to be ready
+        const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+            console.log("ProformasPage: Auth state changed, user:", currentUser?.uid || "null");
             
-            querySnapshot.forEach((doc) => {
-                const data = { id: doc.id, ...doc.data() };
-                
-                // Check if it's converted to invoice - exclude from all lists to avoid double counting
-                if (data.converted || data.convertedToInvoice || data.transformedToInvoice) {
-                    // Skip converted proformas from all lists
-                    return;
-                }
-                
-                if (data.deleted === true || data.cancelled === true) {
-                    deletedDocs.push(data);
-                } else {
-                    activeDocs.push(data);
-                }
-            });
-            
-            activeDocs.sort((a, b) => {
-                const dateA = a.date?.toDate ? a.date.toDate() : new Date(a.date);
-                const dateB = b.date?.toDate ? b.date.toDate() : new Date(b.date);
-                return dateB - dateA;
-            });
-            deletedDocs.sort((a, b) => {
-                const dateA = a.deletedAt?.toDate ? a.deletedAt.toDate() : new Date();
-                const dateB = b.deletedAt?.toDate ? b.deletedAt.toDate() : new Date();
-                return dateB - dateA;
-            });
-            
-            console.log("ProformasPage: Setting proformas - active:", activeDocs.length, "deleted:", deletedDocs.length);
-            setProformas(activeDocs);
-            setDeletedProformas(deletedDocs);
-            setLoading(false);
-        }, (error) => {
-            console.error("ProformasPage: Error fetching proformas: ", error);
-            console.error("ProformasPage: Error code:", error.code);
-            console.error("ProformasPage: Error message:", error.message);
-            
-            // If index error, try without orderBy
-            if (error.code === 'failed-precondition' || error.message?.includes('index')) {
-                console.log("ProformasPage: Index missing, trying query without orderBy");
-                const fallbackQuery = query(
-                    collection(db, `documents/${auth.currentUser.uid}/userDocuments`),
-                    where('type', '==', 'proforma'),
-                    limit(50)
-                );
-                const fallbackUnsubscribe = onSnapshot(fallbackQuery, (querySnapshot) => {
-                    console.log("ProformasPage: Fallback query received", querySnapshot.size, "documents");
-                    const activeDocs = [];
-                    const deletedDocs = [];
-                    
-                    querySnapshot.forEach((doc) => {
-                        const data = { id: doc.id, ...doc.data() };
-                        
-                        if (data.converted || data.convertedToInvoice || data.transformedToInvoice) {
-                            return;
-                        }
-                        
-                        if (data.deleted === true || data.cancelled === true) {
-                            deletedDocs.push(data);
-                        } else {
-                            activeDocs.push(data);
-                        }
-                    });
-                    
-                    activeDocs.sort((a, b) => {
-                        const dateA = a.date?.toDate ? a.date.toDate() : new Date(a.date);
-                        const dateB = b.date?.toDate ? b.date.toDate() : new Date(b.date);
-                        return dateB - dateA;
-                    });
-                    deletedDocs.sort((a, b) => {
-                        const dateA = a.deletedAt?.toDate ? a.deletedAt.toDate() : new Date();
-                        const dateB = b.deletedAt?.toDate ? b.deletedAt.toDate() : new Date();
-                        return dateB - dateA;
-                    });
-                    
-                    console.log("ProformasPage: Setting proformas (fallback) - active:", activeDocs.length, "deleted:", deletedDocs.length);
-                    setProformas(activeDocs);
-                    setDeletedProformas(deletedDocs);
-                    setLoading(false);
-                }, (fallbackError) => {
-                    console.error("ProformasPage: Fallback query also failed:", fallbackError);
-                    setLoading(false);
-                });
-                return () => fallbackUnsubscribe();
+            if (!currentUser) {
+                console.log("ProformasPage: No authenticated user");
+                setLoading(false);
+                return;
             }
-            setLoading(false);
-        });
+            
+            console.log("ProformasPage: Fetching proformas for user:", currentUser.uid);
+            
+            // Fetch proformas with Firebase index optimization
+            const proformaQuery = query(
+                collection(db, `documents/${currentUser.uid}/userDocuments`),
+                where('type', '==', 'proforma'),
+                orderBy('date', 'desc'),
+                limit(50)
+            );
+            
+            const unsubscribe = onSnapshot(proformaQuery, (querySnapshot) => {
+                console.log("ProformasPage: Received snapshot with", querySnapshot.size, "documents");
+                const activeDocs = [];
+                const deletedDocs = [];
+                
+                querySnapshot.forEach((doc) => {
+                    const data = { id: doc.id, ...doc.data() };
+                    
+                    // Check if it's converted to invoice - exclude from all lists to avoid double counting
+                    if (data.converted || data.convertedToInvoice || data.transformedToInvoice) {
+                        // Skip converted proformas from all lists
+                        return;
+                    }
+                    
+                    if (data.deleted === true || data.cancelled === true) {
+                        deletedDocs.push(data);
+                    } else {
+                        activeDocs.push(data);
+                    }
+                });
+                
+                activeDocs.sort((a, b) => {
+                    const dateA = a.date?.toDate ? a.date.toDate() : new Date(a.date);
+                    const dateB = b.date?.toDate ? b.date.toDate() : new Date(b.date);
+                    return dateB - dateA;
+                });
+                deletedDocs.sort((a, b) => {
+                    const dateA = a.deletedAt?.toDate ? a.deletedAt.toDate() : new Date();
+                    const dateB = b.deletedAt?.toDate ? b.deletedAt.toDate() : new Date();
+                    return dateB - dateA;
+                });
+                
+                console.log("ProformasPage: Setting proformas - active:", activeDocs.length, "deleted:", deletedDocs.length);
+                setProformas(activeDocs);
+                setDeletedProformas(deletedDocs);
+                setLoading(false);
+            }, (error) => {
+                console.error("ProformasPage: Error fetching proformas: ", error);
+                console.error("ProformasPage: Error code:", error.code);
+                console.error("ProformasPage: Error message:", error.message);
+                
+                // If index error, try without orderBy
+                if (error.code === 'failed-precondition' || error.message?.includes('index')) {
+                    console.log("ProformasPage: Index missing, trying query without orderBy");
+                    const fallbackQuery = query(
+                        collection(db, `documents/${currentUser.uid}/userDocuments`),
+                        where('type', '==', 'proforma'),
+                        limit(50)
+                    );
+                    const fallbackUnsubscribe = onSnapshot(fallbackQuery, (querySnapshot) => {
+                        console.log("ProformasPage: Fallback query received", querySnapshot.size, "documents");
+                        const activeDocs = [];
+                        const deletedDocs = [];
+                        
+                        querySnapshot.forEach((doc) => {
+                            const data = { id: doc.id, ...doc.data() };
+                            
+                            if (data.converted || data.convertedToInvoice || data.transformedToInvoice) {
+                                return;
+                            }
+                            
+                            if (data.deleted === true || data.cancelled === true) {
+                                deletedDocs.push(data);
+                            } else {
+                                activeDocs.push(data);
+                            }
+                        });
+                        
+                        activeDocs.sort((a, b) => {
+                            const dateA = a.date?.toDate ? a.date.toDate() : new Date(a.date);
+                            const dateB = b.date?.toDate ? b.date.toDate() : new Date(b.date);
+                            return dateB - dateA;
+                        });
+                        deletedDocs.sort((a, b) => {
+                            const dateA = a.deletedAt?.toDate ? a.deletedAt.toDate() : new Date();
+                            const dateB = b.deletedAt?.toDate ? b.deletedAt.toDate() : new Date();
+                            return dateB - dateA;
+                        });
+                        
+                        console.log("ProformasPage: Setting proformas (fallback) - active:", activeDocs.length, "deleted:", deletedDocs.length);
+                        setProformas(activeDocs);
+                        setDeletedProformas(deletedDocs);
+                        setLoading(false);
+                    }, (fallbackError) => {
+                        console.error("ProformasPage: Fallback query also failed:", fallbackError);
+                        setLoading(false);
+                    });
+                    return () => fallbackUnsubscribe();
+                }
+                setLoading(false);
+            });
 
-        return () => unsubscribe();
+            return () => {
+                unsubscribe();
+            };
+        });
+        
+        return () => {
+            unsubscribeAuth();
+        };
     }, []);
 
 

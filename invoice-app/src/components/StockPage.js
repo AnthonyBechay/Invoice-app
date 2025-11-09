@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { collection, query, onSnapshot, addDoc, updateDoc, deleteDoc, doc, runTransaction, writeBatch } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
+import { onAuthStateChanged } from 'firebase/auth';
 import { useDebounce } from '../hooks/useDebounce';
 import { TableSkeleton } from './LoadingSkeleton';
 import Papa from 'papaparse';
@@ -28,6 +29,7 @@ const getNextItemId = async (userId) => {
 
 
 const StockPage = () => {
+    console.log("StockPage: Component rendering");
     const [items, setItems] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
     const debouncedSearchTerm = useDebounce(searchTerm, 300);
@@ -55,20 +57,26 @@ const StockPage = () => {
     const [isSubmitting, setIsSubmitting] = useState(false); // Prevent double submission
 
     useEffect(() => {
-        if (!auth.currentUser) {
-            console.log("StockPage: No authenticated user");
-            setLoading(false);
-            return;
-        }
+        console.log("StockPage: useEffect running");
         
-        console.log("StockPage: Fetching items for user:", auth.currentUser.uid);
-        
-        // Query without orderBy to get all items, including those without itemId
-        // We'll sort client-side to handle items without itemId gracefully
-        const q = query(
-            collection(db, `items/${auth.currentUser.uid}/userItems`)
-        );
-        const unsubscribe = onSnapshot(q, (querySnapshot) => {
+        // Use auth state listener to wait for auth to be ready
+        const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+            console.log("StockPage: Auth state changed, user:", currentUser?.uid || "null");
+            
+            if (!currentUser) {
+                console.log("StockPage: No authenticated user");
+                setLoading(false);
+                return;
+            }
+            
+            console.log("StockPage: Fetching items for user:", currentUser.uid);
+            
+            // Query without orderBy to get all items, including those without itemId
+            // We'll sort client-side to handle items without itemId gracefully
+            const q = query(
+                collection(db, `items/${currentUser.uid}/userItems`)
+            );
+            const unsubscribe = onSnapshot(q, (querySnapshot) => {
             console.log("StockPage: Received snapshot with", querySnapshot.size, "documents");
             const itemsList = [];
             querySnapshot.forEach((doc) => {
@@ -87,16 +95,24 @@ const StockPage = () => {
                 // If neither has itemId, sort by document ID
                 return a.id.localeCompare(b.id);
             });
-            console.log("StockPage: Setting items list with", itemsList.length, "items");
-            setItems(itemsList);
-            setLoading(false);
-        }, (error) => {
-            console.error("StockPage: Error fetching items: ", error);
-            console.error("StockPage: Error code:", error.code);
-            console.error("StockPage: Error message:", error.message);
-            setLoading(false);
+                console.log("StockPage: Setting items list with", itemsList.length, "items");
+                setItems(itemsList);
+                setLoading(false);
+            }, (error) => {
+                console.error("StockPage: Error fetching items: ", error);
+                console.error("StockPage: Error code:", error.code);
+                console.error("StockPage: Error message:", error.message);
+                setLoading(false);
+            });
+            
+            return () => {
+                unsubscribe();
+            };
         });
-        return () => unsubscribe();
+        
+        return () => {
+            unsubscribeAuth();
+        };
     }, []);
 
     const handleInputChange = (e) => {

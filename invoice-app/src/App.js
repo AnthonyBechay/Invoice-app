@@ -25,14 +25,18 @@ export default function App() {
     const [isSidebarOpen, setSidebarOpen] = useState(false);
 
     useEffect(() => {
+        console.log("App: Setting up auth state listener");
         const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+            console.log("App: Auth state changed, user:", currentUser ? currentUser.uid : "null");
             setUser(currentUser);
             setLoading(false);
             if (currentUser) {
+                console.log("App: User authenticated, navigating to dashboard");
                 // Always default to dashboard regardless of when user was created
                 // User can navigate to settings if they need to
                 setPage('dashboard');
             } else {
+                console.log("App: No user, navigating to login");
                 setPage('login');
             }
         });
@@ -79,6 +83,10 @@ export default function App() {
 
                     <main className="flex-1 p-6 sm:p-10 overflow-y-auto bg-gray-100 font-sans">
                         <ErrorBoundary>
+                            {(() => {
+                                console.log("App: Rendering page:", page, "User:", user?.uid);
+                                return null;
+                            })()}
                             {page === 'dashboard' && <Dashboard navigateTo={navigateTo} />}
                             {page === 'proformas' && <ProformasPage navigateTo={navigateTo} />}
                             {page === 'invoices' && <InvoicesPage navigateTo={navigateTo} />}
