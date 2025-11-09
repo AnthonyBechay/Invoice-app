@@ -3,7 +3,7 @@ import { doc, getDoc, setDoc, collection, query, where, getDocs, deleteDoc, writ
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { updateProfile, updateEmail, updatePassword, reauthenticateWithCredential, EmailAuthProvider, sendEmailVerification, verifyBeforeUpdateEmail, applyActionCode, checkActionCode } from 'firebase/auth';
 import { auth, db, storage } from '../firebase/config';
-import { repairMigratedPayments } from '../utils/paymentMigration';
+import { repairMigratedPayments, diagnosticDatabaseCheck } from '../utils/paymentMigration';
 
 const SettingsPage = () => {
     const [companyName, setCompanyName] = useState('');
@@ -330,9 +330,35 @@ const SettingsPage = () => {
         }
     };
 
+    const handleDiagnosticCheck = async () => {
+        if (!auth.currentUser) return;
+        setLoading(true);
+        setFeedback({ type: '', message: '' });
+
+        try {
+            console.log('Running diagnostic check...');
+            const result = await diagnosticDatabaseCheck(auth.currentUser.uid);
+
+            if (result.success === false) {
+                setFeedback({ type: 'error', message: `Diagnostic failed: ${result.error}` });
+            } else {
+                const summary = `Diagnostic completed! Documents: ${result.documents.total}, Payments: ${result.payments.total}, Clients: ${result.clients.total}, Items: ${result.items.total}. ${result.issues.length > 0 ? `Found ${result.issues.length} issue(s) - check console for details.` : 'No issues found.'}`;
+                setFeedback({
+                    type: result.issues.length > 0 ? 'warning' : 'success',
+                    message: summary
+                });
+            }
+        } catch (error) {
+            console.error('Diagnostic error:', error);
+            setFeedback({ type: 'error', message: 'Diagnostic failed. Check console for details.' });
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleCleanupDatabase = async () => {
         if (!auth.currentUser) return;
-        
+
         if (!window.confirm('This will permanently delete all cancelled invoices and deleted proformas. This action cannot be undone. Continue?')) {
             return;
         }
@@ -341,7 +367,13 @@ const SettingsPage = () => {
         setFeedback({ type: '', message: '' });
 
         try {
+            console.log('\n╔════════════════════════════════════════════════════════════╗');
+            console.log('║   DATABASE CLEANUP - STARTING                              ║');
+            console.log('╚════════════════════════════════════════════════════════════╝');
             const userId = auth.currentUser.uid;
+            console.log(`User ID: ${userId}`);
+            console.log(`Timestamp: ${new Date().toISOString()}\n`);
+
             let deletedInvoices = 0;
             let deletedProformas = 0;
             let errors = [];
@@ -351,25 +383,33 @@ const SettingsPage = () => {
                 let deletedCount = 0;
                 let currentBatch = writeBatch(db);
                 let batchCount = 0;
-                
+
+                console.log(`Deleting ${querySnapshot.size} ${type}(s)...`);
+
                 for (const docSnap of querySnapshot.docs) {
+                    const data = docSnap.data();
+                    console.log(`  - Deleting ${type}: ${docSnap.id} (${data.documentNumber || data.invoiceNumber || data.proformaNumber || 'N/A'})`);
+
                     currentBatch.delete(doc(db, `documents/${userId}/userDocuments`, docSnap.id));
                     batchCount++;
                     deletedCount++;
-                    
+
                     // Commit batch when reaching limit (500) or at end
                     if (batchCount >= 500) {
+                        console.log(`  Committing batch of ${batchCount} documents...`);
                         await currentBatch.commit();
                         currentBatch = writeBatch(db);
                         batchCount = 0;
                     }
                 }
-                
+
                 // Commit remaining documents in the last batch
                 if (batchCount > 0) {
+                    console.log(`  Committing final batch of ${batchCount} documents...`);
                     await currentBatch.commit();
                 }
-                
+
+                console.log(`✓ Deleted ${deletedCount} ${type}(s)`);
                 return deletedCount;
             };
 
@@ -416,7 +456,20 @@ const SettingsPage = () => {
             }
 
             const totalDeleted = deletedInvoices + deletedProformas;
-            const message = totalDeleted > 0 
+
+            console.log('\n╔════════════════════════════════════════════════════════════╗');
+            console.log('║   DATABASE CLEANUP - COMPLETED                             ║');
+            console.log('╚════════════════════════════════════════════════════════════╝');
+            console.log(`✓ Deleted invoices: ${deletedInvoices}`);
+            console.log(`✓ Deleted proformas: ${deletedProformas}`);
+            console.log(`✓ Total deleted: ${totalDeleted}`);
+            if (errors.length > 0) {
+                console.log(`⚠ Errors encountered: ${errors.length}`);
+                errors.forEach(err => console.log(`  - ${err}`));
+            }
+            console.log(`Timestamp: ${new Date().toISOString()}\n`);
+
+            const message = totalDeleted > 0
                 ? `Cleanup completed! Deleted ${deletedInvoices} cancelled invoice(s) and ${deletedProformas} deleted proforma(s).${errors.length > 0 ? ' Warnings: ' + errors.join('; ') : ''}`
                 : 'No deleted items found to clean up.';
 
@@ -425,7 +478,11 @@ const SettingsPage = () => {
                 message: message
             });
         } catch (error) {
-            console.error('Cleanup error:', error);
+            console.error('\n╔════════════════════════════════════════════════════════════╗');
+            console.error('║   DATABASE CLEANUP - FAILED                                ║');
+            console.error('╚════════════════════════════════════════════════════════════╝');
+            console.error('Error:', error);
+            console.error('Stack:', error.stack);
             setFeedback({ type: 'error', message: `Cleanup failed: ${error.message}` });
         } finally {
             setLoading(false);
@@ -729,6 +786,37 @@ const SettingsPage = () => {
 
                 {activeTab === 'advanced' && (
                     <div className="space-y-6">
+                        <div className="border-b border-gray-200 pb-6">
+                            <h3 className="text-lg font-medium text-gray-900 mb-4">Database Diagnostic</h3>
+                            <p className="text-sm text-gray-600 mb-4">
+                                Run a comprehensive diagnostic check to analyze your database and identify any issues with documents, payments, clients, or stock items.
+                            </p>
+                            <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-4">
+                                <div className="flex">
+                                    <div className="flex-shrink-0">
+                                        <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                                        </svg>
+                                    </div>
+                                    <div className="ml-3">
+                                        <p className="text-sm text-blue-700">
+                                            <strong>Info:</strong> This diagnostic is safe to run and won't modify any data. Check the browser console for detailed results.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                            <button
+                                onClick={handleDiagnosticCheck}
+                                disabled={loading}
+                                className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md disabled:bg-blue-300"
+                            >
+                                {loading ? 'Running Diagnostic...' : 'Run Database Diagnostic'}
+                            </button>
+                            <p className="text-xs text-gray-500 mt-2">
+                                This will analyze your database and report any issues found. Check browser console (F12) for detailed results.
+                            </p>
+                        </div>
+
                         <div className="border-b border-gray-200 pb-6">
                             <h3 className="text-lg font-medium text-gray-900 mb-4">Payment Data Management</h3>
                             <p className="text-sm text-gray-600 mb-4">

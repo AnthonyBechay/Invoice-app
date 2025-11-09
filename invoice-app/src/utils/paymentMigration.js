@@ -216,49 +216,109 @@ export const rollbackMigration = async (userId) => {
 };
 
 // EMERGENCY: Fix payments that are missing userId field
+// CRITICAL FIX: Now properly filters by userId to prevent cross-user data contamination
 export const fixPaymentsWithoutUserId = async (userId) => {
     try {
-        console.log('Starting emergency fix for payments without userId...');
+        console.log('=== PAYMENT REPAIR STARTED ===');
+        console.log(`User ID: ${userId}`);
+        console.log(`Timestamp: ${new Date().toISOString()}`);
 
-        // Get ALL payments (no filter) to find ones without userId
-        const allPaymentsQuery = query(collection(db, 'payments'));
-        const allPaymentsSnapshot = await getDocs(allPaymentsQuery);
+        // CRITICAL FIX: Only get payments that don't have userId OR have this user's userId
+        // This prevents accidentally stealing payments from other users
+        const paymentsWithoutUserIdQuery = query(
+            collection(db, 'payments'),
+            where('userId', '==', null)
+        );
+
+        // Also get payments that might have this user's ID but need repair
+        const paymentsWithUserIdQuery = query(
+            collection(db, 'payments'),
+            where('userId', '==', userId)
+        );
+
+        console.log('Fetching payments without userId...');
+        const paymentsWithoutUserIdSnapshot = await getDocs(paymentsWithoutUserIdQuery);
+        console.log(`Found ${paymentsWithoutUserIdSnapshot.size} payments without userId`);
+
+        console.log('Fetching payments with current userId...');
+        const paymentsWithUserIdSnapshot = await getDocs(paymentsWithUserIdQuery);
+        console.log(`Found ${paymentsWithUserIdSnapshot.size} payments already with userId`);
+
         let fixedCount = 0;
         let skippedCount = 0;
+        let orphanedPayments = [];
 
         // Get all user's documents to match payments
+        console.log('Fetching user documents...');
         const documentsQuery = query(collection(db, `documents/${userId}/userDocuments`));
         const documentsSnapshot = await getDocs(documentsQuery);
         const userDocumentIds = new Set(documentsSnapshot.docs.map(doc => doc.id));
+        console.log(`Found ${userDocumentIds.size} documents for user ${userId}`);
+        console.log('Document IDs:', Array.from(userDocumentIds));
 
-        console.log(`Found ${allPaymentsSnapshot.size} total payments, checking for user's documents...`);
-
-        for (const paymentDoc of allPaymentsSnapshot.docs) {
+        console.log('\n=== PROCESSING PAYMENTS WITHOUT USERID ===');
+        for (const paymentDoc of paymentsWithoutUserIdSnapshot.docs) {
             const payment = paymentDoc.data();
-
-            // If payment already has userId, skip it
-            if (payment.userId) {
-                skippedCount++;
-                continue;
-            }
+            console.log(`\nPayment ID: ${paymentDoc.id}`);
+            console.log(`  - Amount: ${payment.amount}`);
+            console.log(`  - ClientId: ${payment.clientId}`);
+            console.log(`  - DocumentId: ${payment.documentId}`);
+            console.log(`  - PaymentDate: ${payment.paymentDate}`);
+            console.log(`  - Current userId: ${payment.userId || 'NONE'}`);
 
             // If payment has documentId that belongs to this user, fix it
             if (payment.documentId && userDocumentIds.has(payment.documentId)) {
+                console.log(`  ✓ MATCH FOUND - Document ${payment.documentId} belongs to user ${userId}`);
                 await updateDoc(doc(db, 'payments', paymentDoc.id), {
                     userId: userId,
                     repaired: true,
-                    repairedAt: new Date()
+                    repairedAt: new Date(),
+                    repairedBy: 'fixPaymentsWithoutUserId'
                 });
                 fixedCount++;
-                console.log(`Fixed payment ${paymentDoc.id} - added userId for document ${payment.documentId}`);
+                console.log(`  ✓ REPAIRED - Added userId ${userId} to payment ${paymentDoc.id}`);
+            } else if (payment.documentId) {
+                console.log(`  ✗ NO MATCH - Document ${payment.documentId} does NOT belong to user ${userId}`);
+                orphanedPayments.push({
+                    paymentId: paymentDoc.id,
+                    documentId: payment.documentId,
+                    amount: payment.amount,
+                    clientId: payment.clientId
+                });
+                skippedCount++;
+            } else {
+                console.log(`  - SKIPPED - No documentId on payment`);
+                skippedCount++;
             }
         }
 
-        console.log(`Emergency fix completed. Fixed ${fixedCount} payments. Skipped ${skippedCount} payments that already had userId.`);
-        return { success: true, fixedCount, skippedCount };
+        if (orphanedPayments.length > 0) {
+            console.log('\n=== ORPHANED PAYMENTS (NOT BELONGING TO THIS USER) ===');
+            console.log(`Found ${orphanedPayments.length} payments that don't belong to user ${userId}:`);
+            orphanedPayments.forEach(p => {
+                console.log(`  - Payment ${p.paymentId}: Amount ${p.amount}, Document ${p.documentId}, Client ${p.clientId}`);
+            });
+            console.log('These payments were NOT modified (they belong to other users)');
+        }
+
+        console.log('\n=== REPAIR SUMMARY ===');
+        console.log(`✓ Repaired: ${fixedCount} payments`);
+        console.log(`- Skipped: ${skippedCount} payments (don't belong to this user or no documentId)`);
+        console.log(`- Orphaned: ${orphanedPayments.length} payments (belong to other users)`);
+        console.log('=== PAYMENT REPAIR COMPLETED ===\n');
+
+        return {
+            success: true,
+            fixedCount,
+            skippedCount,
+            orphanedCount: orphanedPayments.length,
+            orphanedPayments: orphanedPayments
+        };
 
     } catch (error) {
-        console.error('Emergency fix failed:', error);
+        console.error('=== PAYMENT REPAIR FAILED ===');
+        console.error('Error:', error);
+        console.error('Stack:', error.stack);
         return { success: false, error: error.message };
     }
 };
@@ -266,18 +326,26 @@ export const fixPaymentsWithoutUserId = async (userId) => {
 // Comprehensive repair function to fix all payment data
 export const repairMigratedPayments = async (userId) => {
     try {
-        console.log('Starting comprehensive payment repair...');
+        console.log('\n╔════════════════════════════════════════════════════════════╗');
+        console.log('║   COMPREHENSIVE PAYMENT REPAIR - STARTING                  ║');
+        console.log('╚════════════════════════════════════════════════════════════╝');
+        console.log(`User ID: ${userId}`);
+        console.log(`Timestamp: ${new Date().toISOString()}\n`);
 
         // First run emergency fix for payments without userId
+        console.log('STEP 1: Running emergency fix for payments without userId...');
         const emergencyFix = await fixPaymentsWithoutUserId(userId);
-        console.log(`Emergency fix result: ${emergencyFix.fixedCount} payments fixed`);
+        console.log(`\n✓ Emergency fix completed: ${emergencyFix.fixedCount} payments fixed, ${emergencyFix.skippedCount} skipped`);
 
         // Get all payments (including ones we just fixed)
+        console.log('\nSTEP 2: Fetching user data for payment repair...');
         const paymentsQuery = query(
             collection(db, 'payments'),
             where('userId', '==', userId)
         );
         const paymentsSnapshot = await getDocs(paymentsQuery);
+        console.log(`✓ Found ${paymentsSnapshot.size} payments for user ${userId}`);
+
         let repairedCount = 0;
         let fixedSettlement = 0;
 
@@ -288,6 +356,7 @@ export const repairMigratedPayments = async (userId) => {
         documentsSnapshot.forEach(doc => {
             documentsMap.set(doc.id, doc.data());
         });
+        console.log(`✓ Found ${documentsSnapshot.size} documents for user ${userId}`);
 
         // Get all clients
         const clientsQuery = query(collection(db, `clients/${userId}/userClients`));
@@ -296,8 +365,9 @@ export const repairMigratedPayments = async (userId) => {
         clientsSnapshot.forEach(doc => {
             clientsMap.set(doc.id, doc.data());
         });
+        console.log(`✓ Found ${clientsSnapshot.size} clients for user ${userId}`);
 
-        console.log(`Found ${paymentsSnapshot.size} payments, ${documentsSnapshot.size} documents, ${clientsSnapshot.size} clients`);
+        console.log('\nSTEP 3: Repairing payment details and settlement status...');
 
         for (const paymentDoc of paymentsSnapshot.docs) {
             const payment = paymentDoc.data();
@@ -372,7 +442,14 @@ export const repairMigratedPayments = async (userId) => {
             }
         }
 
-        console.log(`Payment repair completed. Repaired ${repairedCount} payments. Fixed settlement status on ${fixedSettlement} payments.`);
+        console.log('\n╔════════════════════════════════════════════════════════════╗');
+        console.log('║   COMPREHENSIVE PAYMENT REPAIR - COMPLETED                 ║');
+        console.log('╚════════════════════════════════════════════════════════════╝');
+        console.log(`✓ Emergency fix: ${emergencyFix.fixedCount} payments fixed`);
+        console.log(`✓ Payment repair: ${repairedCount} payments updated`);
+        console.log(`✓ Settlement fix: ${fixedSettlement} settlement statuses corrected`);
+        console.log(`Timestamp: ${new Date().toISOString()}\n`);
+
         return {
             success: true,
             repairedCount,
@@ -381,7 +458,205 @@ export const repairMigratedPayments = async (userId) => {
         };
 
     } catch (error) {
-        console.error('Payment repair failed:', error);
+        console.error('\n╔════════════════════════════════════════════════════════════╗');
+        console.error('║   COMPREHENSIVE PAYMENT REPAIR - FAILED                    ║');
+        console.error('╚════════════════════════════════════════════════════════════╝');
+        console.error('Error:', error);
+        console.error('Stack:', error.stack);
+        return { success: false, error: error.message };
+    }
+};
+
+// Diagnostic function to check database state for a user
+export const diagnosticDatabaseCheck = async (userId) => {
+    try {
+        console.log('\n╔════════════════════════════════════════════════════════════╗');
+        console.log('║   DATABASE DIAGNOSTIC CHECK - STARTING                     ║');
+        console.log('╚════════════════════════════════════════════════════════════╝');
+        console.log(`User ID: ${userId}`);
+        console.log(`Timestamp: ${new Date().toISOString()}\n`);
+
+        const results = {
+            userId: userId,
+            timestamp: new Date().toISOString(),
+            documents: {},
+            payments: {},
+            clients: {},
+            items: {},
+            issues: []
+        };
+
+        // Check documents
+        console.log('Checking documents...');
+        const documentsQuery = query(collection(db, `documents/${userId}/userDocuments`));
+        const documentsSnapshot = await getDocs(documentsQuery);
+        const invoices = documentsSnapshot.docs.filter(doc => doc.data().type === 'invoice');
+        const proformas = documentsSnapshot.docs.filter(doc => doc.data().type === 'proforma');
+        const cancelledInvoices = invoices.filter(doc => doc.data().cancelled === true);
+        const deletedProformas = proformas.filter(doc => doc.data().deleted === true);
+
+        results.documents = {
+            total: documentsSnapshot.size,
+            invoices: invoices.length,
+            proformas: proformas.length,
+            cancelledInvoices: cancelledInvoices.length,
+            deletedProformas: deletedProformas.length,
+            documentIds: documentsSnapshot.docs.map(doc => doc.id)
+        };
+
+        console.log(`  ✓ Total documents: ${documentsSnapshot.size}`);
+        console.log(`    - Invoices: ${invoices.length} (${cancelledInvoices.length} cancelled)`);
+        console.log(`    - Proformas: ${proformas.length} (${deletedProformas.length} deleted)`);
+
+        if (documentsSnapshot.size === 0) {
+            results.issues.push('WARNING: No documents found for this user');
+            console.log('  ⚠ WARNING: No documents found!');
+        }
+
+        // Check payments
+        console.log('\nChecking payments...');
+        const paymentsQuery = query(
+            collection(db, 'payments'),
+            where('userId', '==', userId)
+        );
+        const paymentsSnapshot = await getDocs(paymentsQuery);
+        const paymentsWithDocuments = paymentsSnapshot.docs.filter(doc => doc.data().documentId);
+        const paymentsWithoutDocuments = paymentsSnapshot.docs.filter(doc => !doc.data().documentId);
+        const settledPayments = paymentsSnapshot.docs.filter(doc => doc.data().settledToDocument === true);
+        const unsettledPayments = paymentsSnapshot.docs.filter(doc => doc.data().settledToDocument !== true);
+
+        results.payments = {
+            total: paymentsSnapshot.size,
+            withDocuments: paymentsWithDocuments.length,
+            withoutDocuments: paymentsWithoutDocuments.length,
+            settled: settledPayments.length,
+            unsettled: unsettledPayments.length,
+            totalAmount: paymentsSnapshot.docs.reduce((sum, doc) => sum + (doc.data().amount || 0), 0),
+            paymentIds: paymentsSnapshot.docs.map(doc => ({
+                id: doc.id,
+                amount: doc.data().amount,
+                documentId: doc.data().documentId,
+                settled: doc.data().settledToDocument
+            }))
+        };
+
+        console.log(`  ✓ Total payments: ${paymentsSnapshot.size}`);
+        console.log(`    - With documents: ${paymentsWithDocuments.length}`);
+        console.log(`    - Without documents: ${paymentsWithoutDocuments.length}`);
+        console.log(`    - Settled: ${settledPayments.length}`);
+        console.log(`    - Unsettled: ${unsettledPayments.length}`);
+        console.log(`    - Total amount: ${results.payments.totalAmount}`);
+
+        if (paymentsSnapshot.size === 0) {
+            results.issues.push('WARNING: No payments found for this user');
+            console.log('  ⚠ WARNING: No payments found!');
+        }
+
+        // Check for orphaned payments (payments with documentId that doesn't exist)
+        const orphanedPayments = paymentsWithDocuments.filter(paymentDoc => {
+            const documentId = paymentDoc.data().documentId;
+            return !results.documents.documentIds.includes(documentId);
+        });
+
+        if (orphanedPayments.length > 0) {
+            results.issues.push(`WARNING: ${orphanedPayments.length} payments reference non-existent documents`);
+            console.log(`  ⚠ WARNING: ${orphanedPayments.length} orphaned payments (reference non-existent documents)`);
+            orphanedPayments.forEach(paymentDoc => {
+                const payment = paymentDoc.data();
+                console.log(`    - Payment ${paymentDoc.id}: Amount ${payment.amount}, Missing Document ${payment.documentId}`);
+            });
+        }
+
+        // Check clients
+        console.log('\nChecking clients...');
+        const clientsQuery = query(collection(db, `clients/${userId}/userClients`));
+        const clientsSnapshot = await getDocs(clientsQuery);
+
+        results.clients = {
+            total: clientsSnapshot.size,
+            clientIds: clientsSnapshot.docs.map(doc => ({
+                id: doc.id,
+                name: doc.data().name
+            }))
+        };
+
+        console.log(`  ✓ Total clients: ${clientsSnapshot.size}`);
+
+        if (clientsSnapshot.size === 0) {
+            results.issues.push('WARNING: No clients found for this user');
+            console.log('  ⚠ WARNING: No clients found!');
+        }
+
+        // Check items/stock
+        console.log('\nChecking items/stock...');
+        const itemsQuery = query(collection(db, `items/${userId}/userItems`));
+        const itemsSnapshot = await getDocs(itemsQuery);
+
+        results.items = {
+            total: itemsSnapshot.size,
+            itemIds: itemsSnapshot.docs.map(doc => ({
+                id: doc.id,
+                name: doc.data().name
+            }))
+        };
+
+        console.log(`  ✓ Total items: ${itemsSnapshot.size}`);
+
+        if (itemsSnapshot.size === 0) {
+            results.issues.push('INFO: No stock items found for this user');
+            console.log('  ℹ INFO: No stock items found (this may be normal)');
+        }
+
+        // Check for payments from other users
+        console.log('\nChecking for data contamination...');
+        const allPaymentsQuery = query(collection(db, 'payments'));
+        const allPaymentsSnapshot = await getDocs(allPaymentsQuery);
+        const paymentsWithWrongUser = [];
+
+        for (const paymentDoc of allPaymentsSnapshot.docs) {
+            const payment = paymentDoc.data();
+            if (payment.documentId && results.documents.documentIds.includes(payment.documentId) && payment.userId !== userId) {
+                paymentsWithWrongUser.push({
+                    paymentId: paymentDoc.id,
+                    wrongUserId: payment.userId,
+                    correctUserId: userId,
+                    documentId: payment.documentId,
+                    amount: payment.amount
+                });
+            }
+        }
+
+        if (paymentsWithWrongUser.length > 0) {
+            results.issues.push(`CRITICAL: ${paymentsWithWrongUser.length} payments stolen by other users`);
+            console.log(`  🚨 CRITICAL: ${paymentsWithWrongUser.length} payments have wrong userId!`);
+            paymentsWithWrongUser.forEach(p => {
+                console.log(`    - Payment ${p.paymentId}: Amount ${p.amount}, Document ${p.documentId}, Wrong User: ${p.wrongUserId}`);
+            });
+            results.stolenPayments = paymentsWithWrongUser;
+        } else {
+            console.log(`  ✓ No data contamination detected`);
+        }
+
+        console.log('\n╔════════════════════════════════════════════════════════════╗');
+        console.log('║   DATABASE DIAGNOSTIC CHECK - COMPLETED                    ║');
+        console.log('╚════════════════════════════════════════════════════════════╝');
+        console.log(`Total Issues: ${results.issues.length}`);
+        if (results.issues.length > 0) {
+            console.log('\nISSUES FOUND:');
+            results.issues.forEach(issue => console.log(`  - ${issue}`));
+        } else {
+            console.log('✓ No critical issues found');
+        }
+        console.log('');
+
+        return results;
+
+    } catch (error) {
+        console.error('\n╔════════════════════════════════════════════════════════════╗');
+        console.error('║   DATABASE DIAGNOSTIC CHECK - FAILED                       ║');
+        console.error('╚════════════════════════════════════════════════════════════╝');
+        console.error('Error:', error);
+        console.error('Stack:', error.stack);
         return { success: false, error: error.message };
     }
 };
