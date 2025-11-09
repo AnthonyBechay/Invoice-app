@@ -18,6 +18,7 @@ import ExpensesPage from './components/ExpensesPage';
 import Sidebar from './components/Sidebar';
 
 export default function App() {
+    console.log("🚀 App component rendering");
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
     const [page, setPage] = useState('dashboard'); // 'login', 'register', 'dashboard', 'proformas', 'invoices', 'payments', 'expenses', 'stock', 'clients', 'newDocument', 'viewDocument', 'settings', 'accounting'
