@@ -4,6 +4,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { updateProfile, updateEmail, updatePassword, reauthenticateWithCredential, EmailAuthProvider, sendEmailVerification, verifyBeforeUpdateEmail, applyActionCode, checkActionCode } from 'firebase/auth';
 import { auth, db, storage } from '../firebase/config';
 import { repairMigratedPayments, diagnosticDatabaseCheck } from '../utils/paymentMigration';
+import { deepInvestigation, verifyUserIdentity } from '../utils/advancedDiagnostic';
 
 const SettingsPage = () => {
     const [companyName, setCompanyName] = useState('');
@@ -351,6 +352,68 @@ const SettingsPage = () => {
         } catch (error) {
             console.error('Diagnostic error:', error);
             setFeedback({ type: 'error', message: 'Diagnostic failed. Check console for details.' });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDeepInvestigation = async () => {
+        if (!auth.currentUser) return;
+        setLoading(true);
+        setFeedback({ type: '', message: '' });
+
+        try {
+            console.log('Running deep investigation...');
+            const result = await deepInvestigation(auth.currentUser.uid);
+
+            if (result.success === false) {
+                setFeedback({ type: 'error', message: `Investigation failed: ${result.error}` });
+            } else {
+                const message = `Deep investigation completed. Conclusion: ${result.conclusion || 'See console for details'}. Found ${result.findings.length} findings. Check console (F12) for full report.`;
+                setFeedback({
+                    type: 'warning',
+                    message: message
+                });
+            }
+        } catch (error) {
+            console.error('Investigation error:', error);
+            setFeedback({ type: 'error', message: 'Investigation failed. Check console for details.' });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleVerifyIdentity = async () => {
+        setLoading(true);
+        setFeedback({ type: '', message: '' });
+
+        try {
+            console.log('Verifying user identity...');
+            const result = await verifyUserIdentity();
+
+            if (!result.loggedIn) {
+                setFeedback({ type: 'error', message: 'No user logged in!' });
+            } else if (result.wrongAccount) {
+                setFeedback({
+                    type: 'error',
+                    message: `Wrong account! Expected: a@b.com, Current: ${result.currentEmail}. Check console for details.`
+                });
+            } else if (result.wrongUid) {
+                setFeedback({
+                    type: 'error',
+                    message: `User UID mismatch! This account may have been recreated. Check console for details.`
+                });
+            } else if (result.correct) {
+                setFeedback({
+                    type: 'success',
+                    message: `✓ User identity verified. Email: ${result.email}, UID: ${result.uid}`
+                });
+            } else {
+                setFeedback({ type: 'info', message: 'Identity check completed. See console for details.' });
+            }
+        } catch (error) {
+            console.error('Identity verification error:', error);
+            setFeedback({ type: 'error', message: 'Verification failed. Check console for details.' });
         } finally {
             setLoading(false);
         }
@@ -787,9 +850,40 @@ const SettingsPage = () => {
                 {activeTab === 'advanced' && (
                     <div className="space-y-6">
                         <div className="border-b border-gray-200 pb-6">
-                            <h3 className="text-lg font-medium text-gray-900 mb-4">Database Diagnostic</h3>
+                            <h3 className="text-lg font-medium text-gray-900 mb-4">🔍 User Identity Check</h3>
                             <p className="text-sm text-gray-600 mb-4">
-                                Run a comprehensive diagnostic check to analyze your database and identify any issues with documents, payments, clients, or stock items.
+                                Verify that you are logged in with the correct account and that your user ID matches the expected value.
+                            </p>
+                            <div className="bg-purple-50 border-l-4 border-purple-400 p-4 mb-4">
+                                <div className="flex">
+                                    <div className="flex-shrink-0">
+                                        <svg className="h-5 w-5 text-purple-400" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+                                        </svg>
+                                    </div>
+                                    <div className="ml-3">
+                                        <p className="text-sm text-purple-700">
+                                            <strong>Run this FIRST</strong> if you see no data. You may be logged in with the wrong account or your account may have been recreated.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                            <button
+                                onClick={handleVerifyIdentity}
+                                disabled={loading}
+                                className="bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded-md disabled:bg-purple-300"
+                            >
+                                {loading ? 'Verifying...' : 'Verify User Identity'}
+                            </button>
+                            <p className="text-xs text-gray-500 mt-2">
+                                Expected: a@b.com (UID: CxWdTQh6EwNz7yyZBlFhGmfdaul1)
+                            </p>
+                        </div>
+
+                        <div className="border-b border-gray-200 pb-6">
+                            <h3 className="text-lg font-medium text-gray-900 mb-4">🔍 Quick Database Check</h3>
+                            <p className="text-sm text-gray-600 mb-4">
+                                Run a quick diagnostic check to see how many documents, payments, clients, and stock items you have.
                             </p>
                             <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-4">
                                 <div className="flex">
@@ -800,7 +894,7 @@ const SettingsPage = () => {
                                     </div>
                                     <div className="ml-3">
                                         <p className="text-sm text-blue-700">
-                                            <strong>Info:</strong> This diagnostic is safe to run and won't modify any data. Check the browser console for detailed results.
+                                            <strong>Info:</strong> Safe, read-only check. Check the browser console (F12) for detailed results.
                                         </p>
                                     </div>
                                 </div>
@@ -810,10 +904,38 @@ const SettingsPage = () => {
                                 disabled={loading}
                                 className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md disabled:bg-blue-300"
                             >
-                                {loading ? 'Running Diagnostic...' : 'Run Database Diagnostic'}
+                                {loading ? 'Running...' : 'Run Quick Check'}
+                            </button>
+                        </div>
+
+                        <div className="border-b border-gray-200 pb-6">
+                            <h3 className="text-lg font-medium text-gray-900 mb-4">🔬 Deep Investigation</h3>
+                            <p className="text-sm text-gray-600 mb-4">
+                                Run a comprehensive deep investigation to find out what happened to your data. This checks ALL documents (including deleted ones), scans ALL payments in the database, and provides detailed forensic analysis.
+                            </p>
+                            <div className="bg-orange-50 border-l-4 border-orange-400 p-4 mb-4">
+                                <div className="flex">
+                                    <div className="flex-shrink-0">
+                                        <svg className="h-5 w-5 text-orange-400" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                                        </svg>
+                                    </div>
+                                    <div className="ml-3">
+                                        <p className="text-sm text-orange-700">
+                                            <strong>Use this if data is missing:</strong> This will check for deleted/cancelled documents, scan all payments (including other users), and determine what happened. Safe to run - won't modify data.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                            <button
+                                onClick={handleDeepInvestigation}
+                                disabled={loading}
+                                className="bg-orange-600 hover:bg-orange-700 text-white font-medium py-2 px-4 rounded-md disabled:bg-orange-300"
+                            >
+                                {loading ? 'Investigating...' : 'Run Deep Investigation'}
                             </button>
                             <p className="text-xs text-gray-500 mt-2">
-                                This will analyze your database and report any issues found. Check browser console (F12) for detailed results.
+                                This may take 10-30 seconds. Full forensic report will appear in console (F12).
                             </p>
                         </div>
 
