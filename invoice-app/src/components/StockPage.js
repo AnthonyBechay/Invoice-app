@@ -55,13 +55,21 @@ const StockPage = () => {
     const [isSubmitting, setIsSubmitting] = useState(false); // Prevent double submission
 
     useEffect(() => {
-        if (!auth.currentUser) return;
+        if (!auth.currentUser) {
+            console.log("StockPage: No authenticated user");
+            setLoading(false);
+            return;
+        }
+        
+        console.log("StockPage: Fetching items for user:", auth.currentUser.uid);
+        
         // Query without orderBy to get all items, including those without itemId
         // We'll sort client-side to handle items without itemId gracefully
         const q = query(
             collection(db, `items/${auth.currentUser.uid}/userItems`)
         );
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
+            console.log("StockPage: Received snapshot with", querySnapshot.size, "documents");
             const itemsList = [];
             querySnapshot.forEach((doc) => {
                 itemsList.push({ id: doc.id, ...doc.data() });
@@ -79,10 +87,13 @@ const StockPage = () => {
                 // If neither has itemId, sort by document ID
                 return a.id.localeCompare(b.id);
             });
+            console.log("StockPage: Setting items list with", itemsList.length, "items");
             setItems(itemsList);
             setLoading(false);
         }, (error) => {
-            console.error("Error fetching items: ", error);
+            console.error("StockPage: Error fetching items: ", error);
+            console.error("StockPage: Error code:", error.code);
+            console.error("StockPage: Error message:", error.message);
             setLoading(false);
         });
         return () => unsubscribe();
