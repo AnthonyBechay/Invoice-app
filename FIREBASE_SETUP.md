@@ -41,6 +41,7 @@ If you prefer to create indexes manually or don't have Firebase CLI:
 - **Query Scope**: Collection
 
 #### Index 2: Payments by User and Payment Date
+
 - **Collection ID**: `payments`
 - **Fields to index**:
   - `userId` - Ascending
