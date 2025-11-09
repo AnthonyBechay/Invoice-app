@@ -5,6 +5,7 @@ import { useDebounce } from '../hooks/useDebounce';
 import { TableSkeleton, ListItemSkeleton } from './LoadingSkeleton';
 
 const InvoicesPage = ({ navigateTo }) => {
+    console.log("InvoicesPage: Component rendering");
     const [invoices, setInvoices] = useState([]);
     const [cancelledInvoices, setCancelledInvoices] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -50,7 +51,15 @@ const InvoicesPage = ({ navigateTo }) => {
     };
 
     useEffect(() => {
-        if (!auth.currentUser) return;
+        console.log("InvoicesPage: useEffect running, auth.currentUser:", auth.currentUser?.uid || "null");
+        
+        if (!auth.currentUser) {
+            console.log("InvoicesPage: No authenticated user");
+            setLoading(false);
+            return;
+        }
+
+        console.log("InvoicesPage: Fetching invoices for user:", auth.currentUser.uid);
 
         // Listen to payments (filtered by current user)
         const paymentsQuery = query(
@@ -58,11 +67,14 @@ const InvoicesPage = ({ navigateTo }) => {
             where('userId', '==', auth.currentUser.uid)
         );
         const unsubscribePayments = onSnapshot(paymentsQuery, (snapshot) => {
+            console.log("InvoicesPage: Payments snapshot received with", snapshot.size, "payments");
             const paymentsData = snapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data()
             }));
             setPayments(paymentsData);
+        }, (error) => {
+            console.error("InvoicesPage: Error fetching payments:", error);
         });
 
         const q = query(
@@ -73,6 +85,7 @@ const InvoicesPage = ({ navigateTo }) => {
         );
 
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
+            console.log("InvoicesPage: Received snapshot with", querySnapshot.size, "documents");
             const activeDocs = [];
             const cancelledDocs = [];
 
@@ -85,6 +98,8 @@ const InvoicesPage = ({ navigateTo }) => {
                     activeDocs.push(data);
                 }
             });
+            
+            console.log("InvoicesPage: Processing - active:", activeDocs.length, "cancelled:", cancelledDocs.length);
             
             // Sort by payment status first (unpaid, partial, paid), then by date (newest first)
             activeDocs.sort((a, b) => {
@@ -113,11 +128,14 @@ const InvoicesPage = ({ navigateTo }) => {
             });
             cancelledDocs.sort((a, b) => (b.cancelledAt?.toDate() || new Date()) - (a.cancelledAt?.toDate() || new Date()));
             
+            console.log("InvoicesPage: Setting invoices - active:", activeDocs.length, "cancelled:", cancelledDocs.length);
             setInvoices(activeDocs);
             setCancelledInvoices(cancelledDocs);
             setLoading(false);
         }, (error) => {
-            console.error("Error fetching invoices: ", error);
+            console.error("InvoicesPage: Error fetching invoices: ", error);
+            console.error("InvoicesPage: Error code:", error.code);
+            console.error("InvoicesPage: Error message:", error.message);
             setLoading(false);
         });
 
