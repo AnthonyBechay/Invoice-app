@@ -375,16 +375,19 @@ const PaymentsPage = () => {
 
     const updateDocumentPaymentStatus = async (documentId) => {
         try {
-            // Get all payments for this document (filtered by user)
+            // NOTE: Firebase composite indexes removed, using client-side filtering
+            // Get all user payments, then filter by documentId in memory
             const paymentsQuery = query(
                 collection(db, 'payments'),
-                where('userId', '==', auth.currentUser.uid),
-                where('documentId', '==', documentId)
+                where('userId', '==', auth.currentUser.uid)
             );
-            const paymentsSnapshot = await getDocs(paymentsQuery);
-            
+            const allPaymentsSnapshot = await getDocs(paymentsQuery);
+
+            // Filter for this specific document client-side
+            const filteredPayments = allPaymentsSnapshot.docs.filter(doc => doc.data().documentId === documentId);
+
             let totalPaid = 0;
-            paymentsSnapshot.forEach(doc => {
+            filteredPayments.forEach(doc => {
                 totalPaid += doc.data().amount;
             });
 

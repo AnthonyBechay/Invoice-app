@@ -5,6 +5,7 @@ import { updateProfile, updateEmail, updatePassword, reauthenticateWithCredentia
 import { auth, db, storage } from '../firebase/config';
 import { repairMigratedPayments, diagnosticDatabaseCheck } from '../utils/paymentMigration';
 import { deepInvestigation, verifyUserIdentity } from '../utils/advancedDiagnostic';
+import { fullDataReconstruction, reconstructClients, reconstructPayments } from '../utils/reconstructData';
 
 const SettingsPage = () => {
     const [companyName, setCompanyName] = useState('');
@@ -419,6 +420,43 @@ const SettingsPage = () => {
         }
     };
 
+    const handleFullReconstruction = async () => {
+        if (!auth.currentUser) return;
+
+        if (!window.confirm('This will attempt to reconstruct your clients and payments from existing invoices. Your documents must exist for this to work. Continue?')) {
+            return;
+        }
+
+        setLoading(true);
+        setFeedback({ type: '', message: '' });
+
+        try {
+            console.log('Running full data reconstruction...');
+            const result = await fullDataReconstruction(auth.currentUser.uid);
+
+            if (!result.success) {
+                setFeedback({
+                    type: 'error',
+                    message: `Reconstruction failed. Errors: ${result.errors.join(', ')}. Check console for details.`
+                });
+            } else {
+                const clientsRestored = result.clients?.clientsRestored || 0;
+                const paymentsRestored = result.payments?.paymentsRestored || 0;
+                const itemsRestored = result.items?.itemsRestored || 0;
+
+                setFeedback({
+                    type: 'success',
+                    message: `✓ Data reconstructed! Clients: ${clientsRestored}, Payments: ${paymentsRestored}, Stock Items: ${itemsRestored}. Check console for full report.`
+                });
+            }
+        } catch (error) {
+            console.error('Reconstruction error:', error);
+            setFeedback({ type: 'error', message: `Reconstruction failed: ${error.message}. Check console for details.` });
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleCleanupDatabase = async () => {
         if (!auth.currentUser) return;
 
@@ -476,46 +514,55 @@ const SettingsPage = () => {
                 return deletedCount;
             };
 
-            // Cleanup cancelled invoices
-            try {
-                const invoicesQuery = query(
-                    collection(db, `documents/${userId}/userDocuments`),
-                    where('type', '==', 'invoice'),
-                    where('cancelled', '==', true)
-                );
-                const invoicesSnapshot = await getDocs(invoicesQuery);
-                deletedInvoices = await deleteInBatches(invoicesSnapshot, 'invoice');
-            } catch (error) {
-                console.error('Error cleaning invoices:', error);
-                errors.push(`Error cleaning invoices: ${error.message}`);
-            }
+            // NOTE: Firebase composite indexes removed, using client-side filtering instead
+            // Get ALL documents once, then filter in memory to avoid index requirements
 
-            // Cleanup deleted proformas
             try {
-                const proformasQuery = query(
-                    collection(db, `documents/${userId}/userDocuments`),
-                    where('type', '==', 'proforma'),
-                    where('deleted', '==', true)
-                );
-                const proformasSnapshot = await getDocs(proformasQuery);
-                deletedProformas += await deleteInBatches(proformasSnapshot, 'proforma');
-            } catch (error) {
-                console.error('Error cleaning proformas:', error);
-                errors.push(`Error cleaning proformas: ${error.message}`);
-            }
+                console.log('Fetching all documents for cleanup...');
+                const allDocsQuery = query(collection(db, `documents/${userId}/userDocuments`));
+                const allDocsSnapshot = await getDocs(allDocsQuery);
 
-            // Cleanup cancelled proformas (marked as cancelled instead of deleted)
-            try {
-                const cancelledProformasQuery = query(
-                    collection(db, `documents/${userId}/userDocuments`),
-                    where('type', '==', 'proforma'),
-                    where('cancelled', '==', true)
-                );
-                const cancelledProformasSnapshot = await getDocs(cancelledProformasQuery);
-                deletedProformas += await deleteInBatches(cancelledProformasSnapshot, 'cancelled proforma');
+                console.log(`Fetched ${allDocsSnapshot.size} total documents`);
+
+                // Filter client-side to avoid composite indexes
+                const cancelledInvoices = [];
+                const deletedProformas = [];
+                const cancelledProformas = [];
+
+                allDocsSnapshot.docs.forEach(doc => {
+                    const data = doc.data();
+
+                    if (data.type === 'invoice' && data.cancelled === true) {
+                        cancelledInvoices.push(doc);
+                    } else if (data.type === 'proforma' && data.deleted === true) {
+                        deletedProformas.push(doc);
+                    } else if (data.type === 'proforma' && data.cancelled === true) {
+                        cancelledProformas.push(doc);
+                    }
+                });
+
+                console.log(`Found ${cancelledInvoices.length} cancelled invoices`);
+                console.log(`Found ${deletedProformas.length} deleted proformas`);
+                console.log(`Found ${cancelledProformas.length} cancelled proformas`);
+
+                // Delete cancelled invoices
+                if (cancelledInvoices.length > 0) {
+                    deletedInvoices = await deleteInBatches({ docs: cancelledInvoices, size: cancelledInvoices.length }, 'cancelled invoice');
+                }
+
+                // Delete deleted proformas
+                if (deletedProformas.length > 0) {
+                    deletedProformas += await deleteInBatches({ docs: deletedProformas, size: deletedProformas.length }, 'deleted proforma');
+                }
+
+                // Delete cancelled proformas
+                if (cancelledProformas.length > 0) {
+                    deletedProformas += await deleteInBatches({ docs: cancelledProformas, size: cancelledProformas.length }, 'cancelled proforma');
+                }
+
             } catch (error) {
-                console.error('Error cleaning cancelled proformas:', error);
-                errors.push(`Error cleaning cancelled proformas: ${error.message}`);
+                console.error('Error during cleanup:', error);
+                errors.push(`Error during cleanup: ${error.message}`);
             }
 
             const totalDeleted = deletedInvoices + deletedProformas;
@@ -936,6 +983,43 @@ const SettingsPage = () => {
                             </button>
                             <p className="text-xs text-gray-500 mt-2">
                                 This may take 10-30 seconds. Full forensic report will appear in console (F12).
+                            </p>
+                        </div>
+
+                        <div className="border-b border-gray-200 pb-6">
+                            <h3 className="text-lg font-medium text-gray-900 mb-4">🔧 Reconstruct Lost Data</h3>
+                            <p className="text-sm text-gray-600 mb-4">
+                                If your clients, payments, and stock items collections were deleted, but your documents (invoices/proformas) still exist, this tool can reconstruct ALL of them by extracting embedded data from your existing documents.
+                            </p>
+                            <div className="bg-green-50 border-l-4 border-green-400 p-4 mb-4">
+                                <div className="flex">
+                                    <div className="flex-shrink-0">
+                                        <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                        </svg>
+                                    </div>
+                                    <div className="ml-3">
+                                        <p className="text-sm text-green-700">
+                                            <strong>Recovery Tool:</strong> This will scan your invoices and extract client, payment, AND stock item information. Your documents have embedded data for all three! Safe to run multiple times.
+                                        </p>
+                                        <p className="text-sm text-green-700 mt-2">
+                                            <strong>What will be recovered:</strong> Clients (names, phones, emails), Payments (amounts, dates), Stock Items (names, brands, specs, prices)
+                                        </p>
+                                        <p className="text-sm text-green-700 mt-2">
+                                            <strong>Status:</strong> Your documents have full embedded data - Excellent recovery chance!
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                            <button
+                                onClick={handleFullReconstruction}
+                                disabled={loading}
+                                className="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-md disabled:bg-green-300"
+                            >
+                                {loading ? 'Reconstructing Data...' : 'Reconstruct ALL Data (Clients + Payments + Stock)'}
+                            </button>
+                            <p className="text-xs text-gray-500 mt-2">
+                                This will recreate your clients, payments, AND stock items collections from existing invoices. Check console (F12) for detailed progress.
                             </p>
                         </div>
 
