@@ -1,0 +1,16 @@
+{
+  "name": "invoice-app-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Invoice app monorepo with separate frontend and backend",
+  "scripts": {
+    "dev": "pnpm --parallel -r dev",
+    "build": "pnpm -r build",
+    "start": "pnpm --parallel -r start"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  }
+}

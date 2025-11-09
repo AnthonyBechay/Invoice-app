@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(firebase deploy:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(pnpm install:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []

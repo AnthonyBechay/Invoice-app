@@ -1,0 +1,96 @@
+import React, { useState } from 'react';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import ErrorBoundary from './components/ErrorBoundary';
+import LoginPage from './components/LoginPage';
+import RegisterPage from './components/RegisterPage';
+import Dashboard from './components/Dashboard';
+import StockPage from './components/StockPage';
+import ClientsPage from './components/ClientsPage';
+import NewDocumentPage from './components/NewDocumentPage';
+import ViewDocumentPage from './components/ViewDocumentPage';
+import ProformasPage from './components/ProformasPage';
+import InvoicesPage from './components/InvoicesPage';
+import SettingsPage from './components/SettingsPage';
+import AccountingPage from './components/AccountingPage';
+import PaymentsPage from './components/PaymentsPage';
+import ExpensesPage from './components/ExpensesPage';
+import Sidebar from './components/Sidebar';
+
+function AppContent() {
+    const { user, loading } = useAuth();
+    const [page, setPage] = useState('dashboard');
+    const [editingDocument, setEditingDocument] = useState(null);
+    const [isSidebarOpen, setSidebarOpen] = useState(false);
+
+    const navigateTo = (pageName, data = null) => {
+        if ((pageName === 'newDocument' || pageName === 'viewDocument') && data) {
+            setEditingDocument(data);
+        } else {
+            setEditingDocument(null);
+        }
+        setPage(pageName);
+    };
+
+    const renderPage = () => {
+        if (loading) {
+            return (
+                <div className="flex justify-center items-center h-screen">
+                    <div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-blue-500"></div>
+                </div>
+            );
+        }
+
+        if (!user) {
+            switch (page) {
+                case 'register':
+                    return <RegisterPage setPage={setPage} />;
+                default:
+                    return <LoginPage setPage={setPage} />;
+            }
+        }
+
+        return (
+            <ErrorBoundary>
+                <div className="relative min-h-screen md:flex">
+                    {/* Mobile menu button */}
+                    <div className="md:hidden flex justify-between items-center p-4 bg-gray-800 text-white">
+                        <h1 className="text-xl font-bold">{page.charAt(0).toUpperCase() + page.slice(1)}</h1>
+                        <button onClick={() => setSidebarOpen(!isSidebarOpen)}>
+                            <svg className="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16m-7 6h7" />
+                            </svg>
+                        </button>
+                    </div>
+
+                    <Sidebar navigateTo={navigateTo} currentPage={page} isOpen={isSidebarOpen} setOpen={setSidebarOpen} />
+
+                    <main className="flex-1 p-6 sm:p-10 overflow-y-auto bg-gray-100 font-sans">
+                        <ErrorBoundary>
+                            {page === 'dashboard' && <Dashboard navigateTo={navigateTo} />}
+                            {page === 'proformas' && <ProformasPage navigateTo={navigateTo} />}
+                            {page === 'invoices' && <InvoicesPage navigateTo={navigateTo} />}
+                            {page === 'payments' && <PaymentsPage />}
+                            {page === 'expenses' && <ExpensesPage />}
+                            {page === 'stock' && <StockPage />}
+                            {page === 'clients' && <ClientsPage />}
+                            {page === 'newDocument' && <NewDocumentPage navigateTo={navigateTo} documentToEdit={editingDocument} />}
+                            {page === 'viewDocument' && <ViewDocumentPage documentToView={editingDocument} navigateTo={navigateTo} />}
+                            {page === 'settings' && <SettingsPage />}
+                            {page === 'accounting' && <AccountingPage />}
+                        </ErrorBoundary>
+                    </main>
+                </div>
+            </ErrorBoundary>
+        );
+    };
+
+    return <div className="antialiased">{renderPage()}</div>;
+}
+
+export default function App() {
+    return (
+        <AuthProvider>
+            <AppContent />
+        </AuthProvider>
+    );
+}

@@ -1,0 +1,13 @@
+{
+  "buildCommand": "pnpm build",
+  "outputDirectory": "build",
+  "devCommand": "pnpm dev",
+  "installCommand": "pnpm install",
+  "framework": "create-react-app",
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    }
+  ]
+}
