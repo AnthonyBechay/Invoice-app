@@ -38,12 +38,10 @@ const ProformasPage = ({ navigateTo }) => {
             
             console.log("ProformasPage: Fetching proformas for user:", currentUser.uid);
             
-            // Fetch proformas with Firebase index optimization
+            // NOTE: Composite index removed - fetch all proformas and sort client-side
             const proformaQuery = query(
                 collection(db, `documents/${currentUser.uid}/userDocuments`),
-                where('type', '==', 'proforma'),
-                orderBy('date', 'desc'),
-                limit(50)
+                where('type', '==', 'proforma')
             );
             
             const unsubscribe = onSnapshot(proformaQuery, (querySnapshot) => {

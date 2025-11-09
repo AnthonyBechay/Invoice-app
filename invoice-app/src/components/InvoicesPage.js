@@ -77,11 +77,10 @@ const InvoicesPage = ({ navigateTo }) => {
             console.error("InvoicesPage: Error fetching payments:", error);
         });
 
+        // NOTE: Composite index removed - fetch all invoices and sort client-side
         const q = query(
             collection(db, `documents/${auth.currentUser.uid}/userDocuments`),
-            where('type', '==', 'invoice'),
-            orderBy('date', 'desc'),
-            limit(50)
+            where('type', '==', 'invoice')
         );
 
         const unsubscribe = onSnapshot(q, (querySnapshot) => {

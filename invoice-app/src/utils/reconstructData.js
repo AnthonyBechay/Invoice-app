@@ -16,6 +16,19 @@ export const reconstructClients = async (userId) => {
         console.log(`User ID: ${userId}`);
         console.log(`Timestamp: ${new Date().toISOString()}\n`);
 
+        // SAFETY CHECK 1: Check if clients collection already has data
+        console.log('SAFETY CHECK: Checking if clients already exist...');
+        const existingClientsQuery = query(collection(db, `clients/${userId}/userClients`));
+        const existingClientsSnapshot = await getDocs(existingClientsQuery);
+
+        if (existingClientsSnapshot.size > 0) {
+            console.log(`⚠ WARNING: Found ${existingClientsSnapshot.size} existing clients`);
+            console.log('Reconstruction will ADD to existing clients (duplicates may occur)');
+            console.log('Existing client IDs will be UPDATED with new data');
+        } else {
+            console.log('✓ No existing clients found - safe to reconstruct');
+        }
+
         // Get all documents
         const documentsQuery = query(collection(db, `documents/${userId}/userDocuments`));
         const documentsSnapshot = await getDocs(documentsQuery);
@@ -131,6 +144,22 @@ export const reconstructPayments = async (userId) => {
         console.log('╚════════════════════════════════════════════════════════════╝');
         console.log(`User ID: ${userId}`);
         console.log(`Timestamp: ${new Date().toISOString()}\n`);
+
+        // SAFETY CHECK: Check if payments already exist
+        console.log('SAFETY CHECK: Checking if payments already exist...');
+        const existingPaymentsQuery = query(
+            collection(db, 'payments'),
+            where('userId', '==', userId)
+        );
+        const existingPaymentsSnapshot = await getDocs(existingPaymentsQuery);
+
+        if (existingPaymentsSnapshot.size > 0) {
+            console.log(`⚠ WARNING: Found ${existingPaymentsSnapshot.size} existing payments`);
+            console.log('Reconstruction will ADD new payments (may create duplicates if run multiple times)');
+            console.log('RECOMMENDED: Only run this once, or delete existing payments first');
+        } else {
+            console.log('✓ No existing payments found - safe to reconstruct');
+        }
 
         // Get all documents
         const documentsQuery = query(collection(db, `documents/${userId}/userDocuments`));
@@ -253,6 +282,19 @@ export const reconstructItems = async (userId) => {
         console.log('╚════════════════════════════════════════════════════════════╝');
         console.log(`User ID: ${userId}`);
         console.log(`Timestamp: ${new Date().toISOString()}\n`);
+
+        // SAFETY CHECK: Check if items already exist
+        console.log('SAFETY CHECK: Checking if items already exist...');
+        const existingItemsQuery = query(collection(db, `items/${userId}/userItems`));
+        const existingItemsSnapshot = await getDocs(existingItemsQuery);
+
+        if (existingItemsSnapshot.size > 0) {
+            console.log(`⚠ WARNING: Found ${existingItemsSnapshot.size} existing items`);
+            console.log('Reconstruction will UPDATE existing items with same ID');
+            console.log('Items with different IDs will be ADDED');
+        } else {
+            console.log('✓ No existing items found - safe to reconstruct');
+        }
 
         // Get all documents
         const documentsQuery = query(collection(db, `documents/${userId}/userDocuments`));
