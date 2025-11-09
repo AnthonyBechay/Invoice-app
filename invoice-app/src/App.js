@@ -14,24 +14,30 @@ import InvoicesPage from './components/InvoicesPage';
 import SettingsPage from './components/SettingsPage';
 import AccountingPage from './components/AccountingPage';
 import PaymentsPage from './components/PaymentsPage';
+import ExpensesPage from './components/ExpensesPage';
 import Sidebar from './components/Sidebar';
 
 export default function App() {
+    console.log("🚀 App component rendering");
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [page, setPage] = useState('dashboard'); // 'login', 'register', 'dashboard', 'proformas', 'invoices', 'payments', 'stock', 'clients', 'newDocument', 'viewDocument', 'settings', 'accounting'
+    const [page, setPage] = useState('dashboard'); // 'login', 'register', 'dashboard', 'proformas', 'invoices', 'payments', 'expenses', 'stock', 'clients', 'newDocument', 'viewDocument', 'settings', 'accounting'
     const [editingDocument, setEditingDocument] = useState(null);
     const [isSidebarOpen, setSidebarOpen] = useState(false);
 
     useEffect(() => {
+        console.log("App: Setting up auth state listener");
         const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+            console.log("App: Auth state changed, user:", currentUser ? currentUser.uid : "null");
             setUser(currentUser);
             setLoading(false);
             if (currentUser) {
+                console.log("App: User authenticated, navigating to dashboard");
                 // Always default to dashboard regardless of when user was created
                 // User can navigate to settings if they need to
                 setPage('dashboard');
             } else {
+                console.log("App: No user, navigating to login");
                 setPage('login');
             }
         });
@@ -78,10 +84,15 @@ export default function App() {
 
                     <main className="flex-1 p-6 sm:p-10 overflow-y-auto bg-gray-100 font-sans">
                         <ErrorBoundary>
+                            {(() => {
+                                console.log("App: Rendering page:", page, "User:", user?.uid);
+                                return null;
+                            })()}
                             {page === 'dashboard' && <Dashboard navigateTo={navigateTo} />}
                             {page === 'proformas' && <ProformasPage navigateTo={navigateTo} />}
                             {page === 'invoices' && <InvoicesPage navigateTo={navigateTo} />}
                             {page === 'payments' && <PaymentsPage />}
+                            {page === 'expenses' && <ExpensesPage />}
                             {page === 'stock' && <StockPage />}
                             {page === 'clients' && <ClientsPage />}
                             {page === 'newDocument' && <NewDocumentPage navigateTo={navigateTo} documentToEdit={editingDocument} />}

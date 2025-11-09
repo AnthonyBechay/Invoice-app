@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, onSnapshot, getDocs, orderBy, limit, startAfter, deleteDoc, doc, updateDoc, addDoc, runTransaction } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
+import { onAuthStateChanged } from 'firebase/auth';
 import { useDebounce } from '../hooks/useDebounce';
 import { TableSkeleton } from './LoadingSkeleton';
 
@@ -23,48 +24,128 @@ const ProformasPage = ({ navigateTo }) => {
     const [convertingIds, setConvertingIds] = useState(new Set()); // Track converting proformas
 
     useEffect(() => {
-        if (!auth.currentUser) return;
+        console.log("ProformasPage: useEffect running");
         
-        // Fetch all proformas first, then filter in memory
-        const proformaQuery = query(
-            collection(db, `documents/${auth.currentUser.uid}/userDocuments`),
-            where('type', '==', 'proforma')
-            // orderBy('date', 'desc'), // COMMENTED OUT: Requires Firebase index - will enable later
-            // limit(50) // Limit initial load - will enable after index is added
-        );
-        
-        const unsubscribe = onSnapshot(proformaQuery, (querySnapshot) => {
-            const activeDocs = [];
-            const deletedDocs = [];
+        // Use auth state listener to wait for auth to be ready
+        const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+            console.log("ProformasPage: Auth state changed, user:", currentUser?.uid || "null");
             
-            querySnapshot.forEach((doc) => {
-                const data = { id: doc.id, ...doc.data() };
+            if (!currentUser) {
+                console.log("ProformasPage: No authenticated user");
+                setLoading(false);
+                return;
+            }
+            
+            console.log("ProformasPage: Fetching proformas for user:", currentUser.uid);
+            
+            // Fetch proformas with Firebase index optimization
+            const proformaQuery = query(
+                collection(db, `documents/${currentUser.uid}/userDocuments`),
+                where('type', '==', 'proforma'),
+                orderBy('date', 'desc'),
+                limit(50)
+            );
+            
+            const unsubscribe = onSnapshot(proformaQuery, (querySnapshot) => {
+                console.log("ProformasPage: Received snapshot with", querySnapshot.size, "documents");
+                const activeDocs = [];
+                const deletedDocs = [];
                 
-                // Check if it's converted to invoice - exclude from all lists to avoid double counting
-                if (data.converted || data.convertedToInvoice || data.transformedToInvoice) {
-                    // Skip converted proformas from all lists
-                    return;
-                }
+                querySnapshot.forEach((doc) => {
+                    const data = { id: doc.id, ...doc.data() };
+                    
+                    // Check if it's converted to invoice - exclude from all lists to avoid double counting
+                    if (data.converted || data.convertedToInvoice || data.transformedToInvoice) {
+                        // Skip converted proformas from all lists
+                        return;
+                    }
+                    
+                    if (data.deleted === true || data.cancelled === true) {
+                        deletedDocs.push(data);
+                    } else {
+                        activeDocs.push(data);
+                    }
+                });
                 
-                if (data.deleted === true || data.cancelled === true) {
-                    deletedDocs.push(data);
-                } else {
-                    activeDocs.push(data);
+                activeDocs.sort((a, b) => {
+                    const dateA = a.date?.toDate ? a.date.toDate() : new Date(a.date);
+                    const dateB = b.date?.toDate ? b.date.toDate() : new Date(b.date);
+                    return dateB - dateA;
+                });
+                deletedDocs.sort((a, b) => {
+                    const dateA = a.deletedAt?.toDate ? a.deletedAt.toDate() : new Date();
+                    const dateB = b.deletedAt?.toDate ? b.deletedAt.toDate() : new Date();
+                    return dateB - dateA;
+                });
+                
+                console.log("ProformasPage: Setting proformas - active:", activeDocs.length, "deleted:", deletedDocs.length);
+                setProformas(activeDocs);
+                setDeletedProformas(deletedDocs);
+                setLoading(false);
+            }, (error) => {
+                console.error("ProformasPage: Error fetching proformas: ", error);
+                console.error("ProformasPage: Error code:", error.code);
+                console.error("ProformasPage: Error message:", error.message);
+                
+                // If index error, try without orderBy
+                if (error.code === 'failed-precondition' || error.message?.includes('index')) {
+                    console.log("ProformasPage: Index missing, trying query without orderBy");
+                    const fallbackQuery = query(
+                        collection(db, `documents/${currentUser.uid}/userDocuments`),
+                        where('type', '==', 'proforma'),
+                        limit(50)
+                    );
+                    const fallbackUnsubscribe = onSnapshot(fallbackQuery, (querySnapshot) => {
+                        console.log("ProformasPage: Fallback query received", querySnapshot.size, "documents");
+                        const activeDocs = [];
+                        const deletedDocs = [];
+                        
+                        querySnapshot.forEach((doc) => {
+                            const data = { id: doc.id, ...doc.data() };
+                            
+                            if (data.converted || data.convertedToInvoice || data.transformedToInvoice) {
+                                return;
+                            }
+                            
+                            if (data.deleted === true || data.cancelled === true) {
+                                deletedDocs.push(data);
+                            } else {
+                                activeDocs.push(data);
+                            }
+                        });
+                        
+                        activeDocs.sort((a, b) => {
+                            const dateA = a.date?.toDate ? a.date.toDate() : new Date(a.date);
+                            const dateB = b.date?.toDate ? b.date.toDate() : new Date(b.date);
+                            return dateB - dateA;
+                        });
+                        deletedDocs.sort((a, b) => {
+                            const dateA = a.deletedAt?.toDate ? a.deletedAt.toDate() : new Date();
+                            const dateB = b.deletedAt?.toDate ? b.deletedAt.toDate() : new Date();
+                            return dateB - dateA;
+                        });
+                        
+                        console.log("ProformasPage: Setting proformas (fallback) - active:", activeDocs.length, "deleted:", deletedDocs.length);
+                        setProformas(activeDocs);
+                        setDeletedProformas(deletedDocs);
+                        setLoading(false);
+                    }, (fallbackError) => {
+                        console.error("ProformasPage: Fallback query also failed:", fallbackError);
+                        setLoading(false);
+                    });
+                    return () => fallbackUnsubscribe();
                 }
+                setLoading(false);
             });
-            
-            activeDocs.sort((a, b) => b.date.toDate() - a.date.toDate());
-            deletedDocs.sort((a, b) => (b.deletedAt?.toDate() || new Date()) - (a.deletedAt?.toDate() || new Date()));
-            
-            setProformas(activeDocs);
-            setDeletedProformas(deletedDocs);
-            setLoading(false);
-        }, (error) => {
-            console.error("Error fetching proformas: ", error);
-            setLoading(false);
-        });
 
-        return () => unsubscribe();
+            return () => {
+                unsubscribe();
+            };
+        });
+        
+        return () => {
+            unsubscribeAuth();
+        };
     }, []);
 
 
@@ -316,7 +397,7 @@ const ProformasPage = ({ navigateTo }) => {
             <div className="mb-6">
                 <input
                     type="text"
-                    placeholder="Search by number, client, date, amount, or payment status..."
+                    placeholder="Search by proforma number, client name, date, or amount..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -325,16 +406,33 @@ const ProformasPage = ({ navigateTo }) => {
 
             {/* Proforma Summary */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <div className="bg-yellow-50 p-4 rounded-lg">
-                    <p className="text-sm text-yellow-600">Total Proforma Value</p>
-                    <p className="text-2xl font-bold text-yellow-800">${totalAmount.toFixed(2)}</p>
-                    <p className="text-xs text-yellow-600 mt-1">Active proformas (not yet converted to invoices)</p>
-                </div>
-                <div className="bg-blue-50 p-4 rounded-lg">
-                    <p className="text-sm text-blue-600">Total Active Proformas</p>
-                    <p className="text-2xl font-bold text-blue-800">{displayedProformas.length}</p>
-                    <p className="text-xs text-blue-600 mt-1">Convert proformas to invoices to enable payments</p>
-                </div>
+                {loading ? (
+                    <>
+                        <div className="bg-yellow-50 p-4 rounded-lg animate-pulse">
+                            <div className="h-4 bg-yellow-200 rounded w-1/2 mb-2"></div>
+                            <div className="h-8 bg-yellow-200 rounded w-3/4 mb-2"></div>
+                            <div className="h-3 bg-yellow-200 rounded w-full"></div>
+                        </div>
+                        <div className="bg-blue-50 p-4 rounded-lg animate-pulse">
+                            <div className="h-4 bg-blue-200 rounded w-1/2 mb-2"></div>
+                            <div className="h-8 bg-blue-200 rounded w-1/3 mb-2"></div>
+                            <div className="h-3 bg-blue-200 rounded w-full"></div>
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        <div className="bg-yellow-50 p-4 rounded-lg">
+                            <p className="text-sm text-yellow-600">Total Proforma Value</p>
+                            <p className="text-2xl font-bold text-yellow-800">${totalAmount.toFixed(2)}</p>
+                            <p className="text-xs text-yellow-600 mt-1">Active proformas (not yet converted to invoices)</p>
+                        </div>
+                        <div className="bg-blue-50 p-4 rounded-lg">
+                            <p className="text-sm text-blue-600">Total Active Proformas</p>
+                            <p className="text-2xl font-bold text-blue-800">{displayedProformas.length}</p>
+                            <p className="text-xs text-blue-600 mt-1">Convert proformas to invoices to enable payments</p>
+                        </div>
+                    </>
+                )}
             </div>
 
             <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6">
@@ -358,7 +456,7 @@ const ProformasPage = ({ navigateTo }) => {
             <div className="bg-white p-6 rounded-lg shadow-lg">
                 <div className="overflow-x-auto">
                     {loading ? (
-                        <TableSkeleton rows={5} columns={6} />
+                        <TableSkeleton rows={5} columns={5} />
                     ) : displayedProformas.length === 0 ? (
                         <p className="text-gray-500">
                             {debouncedSearchQuery ? 'No proformas found matching your search.' : 'No proformas found.'}

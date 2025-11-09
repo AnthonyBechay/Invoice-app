@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { collection, query, onSnapshot, addDoc, updateDoc, deleteDoc, doc, runTransaction, writeBatch, getDocs, where, limit, orderBy } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
+import { onAuthStateChanged } from 'firebase/auth';
 import { useDebounce } from '../hooks/useDebounce';
 import { TableSkeleton } from './LoadingSkeleton';
 import Papa from 'papaparse';
@@ -27,6 +28,7 @@ const getNextClientId = async (userId) => {
 };
 
 const ClientsPage = () => {
+    console.log("ClientsPage: Component rendering");
     const [clients, setClients] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
     const debouncedSearchTerm = useDebounce(searchTerm, 300);
@@ -40,25 +42,76 @@ const ClientsPage = () => {
     const [isSubmitting, setIsSubmitting] = useState(false); // Prevent double submission
 
     useEffect(() => {
-        if (!auth.currentUser) return;
-        const q = query(
-            collection(db, `clients/${auth.currentUser.uid}/userClients`),
-            orderBy('clientId', 'asc'),
-            limit(100) // Limit initial load
-        );
-        const unsubscribe = onSnapshot(q, (querySnapshot) => {
-            const clientsList = [];
-            querySnapshot.forEach((doc) => {
-                clientsList.push({ id: doc.id, ...doc.data() });
+        console.log("ClientsPage: useEffect running");
+        
+        // Use auth state listener to wait for auth to be ready
+        const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+            console.log("ClientsPage: Auth state changed, user:", currentUser?.uid || "null");
+            
+            if (!currentUser) {
+                console.log("ClientsPage: No authenticated user");
+                setLoading(false);
+                return;
+            }
+            
+            console.log("ClientsPage: Fetching clients for user:", currentUser.uid);
+        
+            // Try query with orderBy first, fallback to query without orderBy if index missing
+            let q = query(
+                collection(db, `clients/${currentUser.uid}/userClients`),
+                orderBy('clientId', 'asc'),
+                limit(100) // Limit initial load
+            );
+            
+            const unsubscribe = onSnapshot(q, (querySnapshot) => {
+                console.log("ClientsPage: Received snapshot with", querySnapshot.size, "documents");
+                const clientsList = [];
+                querySnapshot.forEach((doc) => {
+                    clientsList.push({ id: doc.id, ...doc.data() });
+                });
+                clientsList.sort((a,b) => a.clientId - b.clientId);
+                console.log("ClientsPage: Setting clients list with", clientsList.length, "clients");
+                setClients(clientsList);
+                setLoading(false);
+            }, (error) => {
+                console.error("ClientsPage: Error fetching clients: ", error);
+                console.error("ClientsPage: Error code:", error.code);
+                console.error("ClientsPage: Error message:", error.message);
+                
+                // If index error, try without orderBy
+                if (error.code === 'failed-precondition' || error.message?.includes('index')) {
+                    console.log("ClientsPage: Index missing, trying query without orderBy");
+                    const fallbackQuery = query(
+                        collection(db, `clients/${currentUser.uid}/userClients`),
+                        limit(100)
+                    );
+                    const fallbackUnsubscribe = onSnapshot(fallbackQuery, (querySnapshot) => {
+                        console.log("ClientsPage: Fallback query received", querySnapshot.size, "documents");
+                        const clientsList = [];
+                        querySnapshot.forEach((doc) => {
+                            clientsList.push({ id: doc.id, ...doc.data() });
+                        });
+                        clientsList.sort((a,b) => (a.clientId || 0) - (b.clientId || 0));
+                        console.log("ClientsPage: Setting clients list with", clientsList.length, "clients (fallback)");
+                        setClients(clientsList);
+                        setLoading(false);
+                    }, (fallbackError) => {
+                        console.error("ClientsPage: Fallback query also failed:", fallbackError);
+                        setLoading(false);
+                    });
+                    return () => fallbackUnsubscribe();
+                }
+                setLoading(false);
             });
-            clientsList.sort((a,b) => a.clientId - b.clientId);
-            setClients(clientsList);
-            setLoading(false);
-        }, (error) => {
-            console.error("Error fetching clients: ", error);
-            setLoading(false);
+            
+            return () => {
+                unsubscribe();
+            };
         });
-        return () => unsubscribe();
+        
+        return () => {
+            unsubscribeAuth();
+        };
     }, []);
 
     const handleInputChange = (e) => {

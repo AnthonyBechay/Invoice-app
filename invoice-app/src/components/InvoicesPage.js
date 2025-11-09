@@ -5,6 +5,7 @@ import { useDebounce } from '../hooks/useDebounce';
 import { TableSkeleton, ListItemSkeleton } from './LoadingSkeleton';
 
 const InvoicesPage = ({ navigateTo }) => {
+    console.log("InvoicesPage: Component rendering");
     const [invoices, setInvoices] = useState([]);
     const [cancelledInvoices, setCancelledInvoices] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -50,7 +51,15 @@ const InvoicesPage = ({ navigateTo }) => {
     };
 
     useEffect(() => {
-        if (!auth.currentUser) return;
+        console.log("InvoicesPage: useEffect running, auth.currentUser:", auth.currentUser?.uid || "null");
+        
+        if (!auth.currentUser) {
+            console.log("InvoicesPage: No authenticated user");
+            setLoading(false);
+            return;
+        }
+
+        console.log("InvoicesPage: Fetching invoices for user:", auth.currentUser.uid);
 
         // Listen to payments (filtered by current user)
         const paymentsQuery = query(
@@ -58,21 +67,25 @@ const InvoicesPage = ({ navigateTo }) => {
             where('userId', '==', auth.currentUser.uid)
         );
         const unsubscribePayments = onSnapshot(paymentsQuery, (snapshot) => {
+            console.log("InvoicesPage: Payments snapshot received with", snapshot.size, "payments");
             const paymentsData = snapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data()
             }));
             setPayments(paymentsData);
+        }, (error) => {
+            console.error("InvoicesPage: Error fetching payments:", error);
         });
 
         const q = query(
             collection(db, `documents/${auth.currentUser.uid}/userDocuments`),
-            where('type', '==', 'invoice')
-            // orderBy('date', 'desc'), // COMMENTED OUT: Requires Firebase index - will enable later
-            // limit(50) // Limit initial load - will enable after index is added
+            where('type', '==', 'invoice'),
+            orderBy('date', 'desc'),
+            limit(50)
         );
 
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
+            console.log("InvoicesPage: Received snapshot with", querySnapshot.size, "documents");
             const activeDocs = [];
             const cancelledDocs = [];
 
@@ -85,6 +98,8 @@ const InvoicesPage = ({ navigateTo }) => {
                     activeDocs.push(data);
                 }
             });
+            
+            console.log("InvoicesPage: Processing - active:", activeDocs.length, "cancelled:", cancelledDocs.length);
             
             // Sort by payment status first (unpaid, partial, paid), then by date (newest first)
             activeDocs.sort((a, b) => {
@@ -113,11 +128,14 @@ const InvoicesPage = ({ navigateTo }) => {
             });
             cancelledDocs.sort((a, b) => (b.cancelledAt?.toDate() || new Date()) - (a.cancelledAt?.toDate() || new Date()));
             
+            console.log("InvoicesPage: Setting invoices - active:", activeDocs.length, "cancelled:", cancelledDocs.length);
             setInvoices(activeDocs);
             setCancelledInvoices(cancelledDocs);
             setLoading(false);
         }, (error) => {
-            console.error("Error fetching invoices: ", error);
+            console.error("InvoicesPage: Error fetching invoices: ", error);
+            console.error("InvoicesPage: Error code:", error.code);
+            console.error("InvoicesPage: Error message:", error.message);
             setLoading(false);
         });
 
@@ -441,10 +459,17 @@ const InvoicesPage = ({ navigateTo }) => {
 
             {/* Payment Summary - Only show unpaid */}
             <div className="grid grid-cols-1 md:grid-cols-1 gap-4 mb-6">
-                <div className="bg-red-50 p-4 rounded-lg">
-                    <p className="text-sm text-red-600">Total Outstanding (Unpaid)</p>
-                    <p className="text-2xl font-bold text-red-800">${totalUnpaidAmount.toFixed(2)}</p>
-                </div>
+                {loading ? (
+                    <div className="bg-red-50 p-4 rounded-lg animate-pulse">
+                        <div className="h-4 bg-red-200 rounded w-1/2 mb-2"></div>
+                        <div className="h-8 bg-red-200 rounded w-3/4"></div>
+                    </div>
+                ) : (
+                    <div className="bg-red-50 p-4 rounded-lg">
+                        <p className="text-sm text-red-600">Total Outstanding (Unpaid)</p>
+                        <p className="text-2xl font-bold text-red-800">${totalUnpaidAmount.toFixed(2)}</p>
+                    </div>
+                )}
             </div>
 
             <div className="bg-white p-6 rounded-lg shadow-lg">
