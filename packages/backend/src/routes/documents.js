@@ -44,6 +44,54 @@ router.get('/', async (req, res, next) => {
 });
 
 /**
+ * Get next document number for a given type
+ */
+router.get('/next-number/:type', async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { type } = req.params;
+
+    // Convert to uppercase for Prisma enum
+    const documentType = type.toUpperCase();
+
+    // Validate type
+    if (!['PROFORMA', 'INVOICE'].includes(documentType)) {
+      return res.status(400).json({ error: 'Invalid document type. Must be PROFORMA or INVOICE' });
+    }
+
+    const year = new Date().getFullYear();
+    const prefix = documentType === 'PROFORMA' ? 'PRO' : 'INV';
+    const counterType = documentType === 'PROFORMA' ? 'proforma' : 'invoice';
+
+    // Get or create counter
+    const result = await prisma.counter.upsert({
+      where: {
+        userId_type: {
+          userId,
+          type: counterType
+        }
+      },
+      update: {
+        lastId: {
+          increment: 1
+        }
+      },
+      create: {
+        userId,
+        type: counterType,
+        lastId: 1
+      }
+    });
+
+    const documentNumber = `${prefix}-${year}-${String(result.lastId).padStart(3, '0')}`;
+
+    res.json({ documentNumber });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
  * Get a single document by ID
  */
 router.get('/:id', async (req, res, next) => {

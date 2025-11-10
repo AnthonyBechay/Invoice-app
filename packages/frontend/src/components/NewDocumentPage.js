@@ -179,18 +179,24 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
         }
     };
 
-    // Filter items based on search including custom fields
+    // Filter items based on search - comprehensive search across all fields
     const filteredItems = stockItems.filter(item => {
         const search = itemSearch.toLowerCase();
         return (
             item.name?.toLowerCase().includes(search) ||
+            item.description?.toLowerCase().includes(search) ||
             item.brand?.toLowerCase().includes(search) ||
+            item.model?.toLowerCase().includes(search) ||
             item.category?.toLowerCase().includes(search) ||
             item.partNumber?.toLowerCase().includes(search) ||
-            item.specs?.toLowerCase().includes(search) ||
+            item.sku?.toLowerCase().includes(search) ||
+            item.specifications?.toLowerCase().includes(search) ||
+            item.voltage?.toLowerCase().includes(search) ||
+            item.power?.toLowerCase().includes(search) ||
+            item.material?.toLowerCase().includes(search) ||
+            item.supplier?.toLowerCase().includes(search) ||
             item.sellingPrice?.toString().includes(search) ||
-            item.customField1?.toLowerCase().includes(search) ||
-            item.customField2?.toLowerCase().includes(search)
+            item.buyingPrice?.toString().includes(search)
         );
     });
 
@@ -282,10 +288,18 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
                         <tbody>
                             {lineItems.map((item, index) => (
                                 <tr key={index} className="border-b">
-                                    <td className="py-2 px-2 sm:px-4 text-xs sm:text-sm">{item.partNumber}</td>
+                                    <td className="py-2 px-2 sm:px-4 text-xs sm:text-sm">
+                                        {item.partNumber || '-'}
+                                        {item.sku && <div className="text-xs text-gray-500">SKU: {item.sku}</div>}
+                                    </td>
                                     <td className="py-2 px-2 sm:px-4">
                                         <div className="font-medium text-xs sm:text-sm">{item.name}</div>
-                                        <div className="text-xs text-gray-600">{item.brand && `${item.brand} - `}{item.specs}</div>
+                                        <div className="text-xs text-gray-600">
+                                            {item.brand && `${item.brand}`}
+                                            {item.model && ` ${item.model}`}
+                                            {(item.brand || item.model) && item.specifications && ' - '}
+                                            {item.specifications}
+                                        </div>
                                     </td>
                                     <td className="py-2 px-2 sm:px-4">
                                         <input
@@ -330,46 +344,46 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
                                 setIsItemDropdownVisible(true);
                             }}
                             onFocus={() => setIsItemDropdownVisible(true)}
-                            placeholder="Search by name, brand, category, part number, specs, or price..."
+                            placeholder="Search by name, brand, model, part#, specs, voltage, material, or price..."
                             className="w-full p-2 sm:p-3 border border-gray-300 rounded-md text-sm sm:text-base"
                         />
                         {isItemDropdownVisible && filteredItems.length > 0 && (
-                            <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                            <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-80 overflow-y-auto">
                                 {filteredItems.map(item => (
                                     <div
                                         key={item.id}
                                         onClick={() => handleAddItemToList(item)}
                                         className="p-3 hover:bg-gray-100 cursor-pointer border-b"
                                     >
-                                        <div className="font-medium">{item.name}</div>
-                                        <div className="text-sm text-gray-600">
-                                            {item.brand && `Brand: ${item.brand} | `}
-                                            {item.category && `Category: ${item.category} | `}
-                                            {item.type && `Type: ${item.type} | `}
-                                            {item.color && (
-                                                <span>
-                                                    Color: <span className="inline-block px-2 py-0.5 rounded"
-                                                        style={{
-                                                            backgroundColor: item.color.toLowerCase() === 'white' ? '#f3f4f6' :
-                                                                           item.color.toLowerCase() === 'black' ? '#1f2937' :
-                                                                           item.color.toLowerCase() === 'red' ? '#ef4444' :
-                                                                           item.color.toLowerCase() === 'blue' ? '#3b82f6' :
-                                                                           item.color.toLowerCase() === 'green' ? '#10b981' :
-                                                                           item.color.toLowerCase() === 'yellow' ? '#f59e0b' :
-                                                                           item.color.toLowerCase() === 'gray' || item.color.toLowerCase() === 'grey' ? '#6b7280' :
-                                                                           '#e5e7eb',
-                                                            color: item.color.toLowerCase() === 'white' ||
-                                                                  item.color.toLowerCase() === 'yellow' ? '#1f2937' : '#ffffff',
-                                                            fontSize: '11px'
-                                                        }}>
-                                                        {item.color}
-                                                    </span> |
-                                                </span>
-                                            )}
-                                            {item.partNumber && `Part #: ${item.partNumber} | `}
-                                            Price: ${item.sellingPrice}
+                                        <div className="flex justify-between items-start">
+                                            <div className="flex-1">
+                                                <div className="font-medium text-sm">{item.name}</div>
+                                                <div className="text-xs text-gray-600 mt-1">
+                                                    {item.brand && <span className="font-medium">{item.brand}</span>}
+                                                    {item.model && <span> {item.model}</span>}
+                                                    {(item.brand || item.model) && (item.category || item.partNumber) && <span> • </span>}
+                                                    {item.category && <span className="text-gray-500">{item.category}</span>}
+                                                    {item.partNumber && <span> • Part #: {item.partNumber}</span>}
+                                                </div>
+                                                {item.specifications && <div className="text-xs text-gray-500 mt-1">{item.specifications}</div>}
+                                                {(item.voltage || item.power || item.material) && (
+                                                    <div className="text-xs text-gray-500 mt-1">
+                                                        {item.voltage && <span>⚡ {item.voltage}</span>}
+                                                        {item.voltage && item.power && <span> • </span>}
+                                                        {item.power && <span>🔋 {item.power}</span>}
+                                                        {(item.voltage || item.power) && item.material && <span> • </span>}
+                                                        {item.material && <span>📦 {item.material}</span>}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="ml-3 text-right">
+                                                <div className="text-sm font-semibold text-green-600">${(item.sellingPrice || 0).toFixed(2)}</div>
+                                                <div className="text-xs text-gray-400">Cost: ${(item.buyingPrice || 0).toFixed(2)}</div>
+                                                {item.quantity !== undefined && (
+                                                    <div className="text-xs text-gray-500 mt-1">Stock: {item.quantity} {item.unit}</div>
+                                                )}
+                                            </div>
                                         </div>
-                                        {item.specs && <div className="text-xs text-gray-500 mt-1">{item.specs}</div>}
                                     </div>
                                 ))}
                             </div>

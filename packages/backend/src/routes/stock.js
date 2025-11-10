@@ -16,9 +16,18 @@ router.get('/', async (req, res, next) => {
     };
 
     if (search) {
+      // Search across all relevant fields for comprehensive results
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } }
+        { description: { contains: search, mode: 'insensitive' } },
+        { category: { contains: search, mode: 'insensitive' } },
+        { brand: { contains: search, mode: 'insensitive' } },
+        { model: { contains: search, mode: 'insensitive' } },
+        { partNumber: { contains: search, mode: 'insensitive' } },
+        { sku: { contains: search, mode: 'insensitive' } },
+        { specifications: { contains: search, mode: 'insensitive' } },
+        { supplier: { contains: search, mode: 'insensitive' } },
+        { notes: { contains: search, mode: 'insensitive' } }
       ];
     }
 
@@ -65,20 +74,39 @@ router.get('/:id', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const { name, description, unit, unitPrice, quantity } = req.body;
+    const data = req.body;
 
-    if (!name) {
+    if (!data.name) {
       return res.status(400).json({ error: 'Name is required' });
     }
 
+    // Create item with all provided fields
     const item = await prisma.stock.create({
       data: {
         userId,
-        name,
-        description: description || '',
-        unit: unit || '',
-        unitPrice: unitPrice || 0,
-        quantity: quantity || 0
+        name: data.name,
+        description: data.description || '',
+        category: data.category || '',
+        buyingPrice: data.buyingPrice || 0,
+        sellingPrice: data.sellingPrice || data.unitPrice || 0, // Support old unitPrice field
+        unit: data.unit || '',
+        quantity: data.quantity || 0,
+        minQuantity: data.minQuantity || 0,
+        brand: data.brand || '',
+        model: data.model || '',
+        partNumber: data.partNumber || '',
+        sku: data.sku || '',
+        specifications: data.specifications || '',
+        voltage: data.voltage || '',
+        power: data.power || '',
+        material: data.material || '',
+        size: data.size || '',
+        weight: data.weight || '',
+        color: data.color || '',
+        supplier: data.supplier || '',
+        supplierCode: data.supplierCode || '',
+        warranty: data.warranty || '',
+        notes: data.notes || ''
       }
     });
 
@@ -95,7 +123,7 @@ router.put('/:id', async (req, res, next) => {
   try {
     const userId = req.user.id;
     const { id } = req.params;
-    const { name, description, unit, unitPrice, quantity } = req.body;
+    const data = req.body;
 
     const item = await prisma.stock.findFirst({
       where: { id, userId }
@@ -105,15 +133,36 @@ router.put('/:id', async (req, res, next) => {
       return res.status(404).json({ error: 'Stock item not found' });
     }
 
+    // Update with all provided fields
+    const updateData = {};
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.description !== undefined) updateData.description = data.description;
+    if (data.category !== undefined) updateData.category = data.category;
+    if (data.buyingPrice !== undefined) updateData.buyingPrice = data.buyingPrice;
+    if (data.sellingPrice !== undefined) updateData.sellingPrice = data.sellingPrice;
+    if (data.unitPrice !== undefined) updateData.sellingPrice = data.unitPrice; // Backward compatibility
+    if (data.unit !== undefined) updateData.unit = data.unit;
+    if (data.quantity !== undefined) updateData.quantity = data.quantity;
+    if (data.minQuantity !== undefined) updateData.minQuantity = data.minQuantity;
+    if (data.brand !== undefined) updateData.brand = data.brand;
+    if (data.model !== undefined) updateData.model = data.model;
+    if (data.partNumber !== undefined) updateData.partNumber = data.partNumber;
+    if (data.sku !== undefined) updateData.sku = data.sku;
+    if (data.specifications !== undefined) updateData.specifications = data.specifications;
+    if (data.voltage !== undefined) updateData.voltage = data.voltage;
+    if (data.power !== undefined) updateData.power = data.power;
+    if (data.material !== undefined) updateData.material = data.material;
+    if (data.size !== undefined) updateData.size = data.size;
+    if (data.weight !== undefined) updateData.weight = data.weight;
+    if (data.color !== undefined) updateData.color = data.color;
+    if (data.supplier !== undefined) updateData.supplier = data.supplier;
+    if (data.supplierCode !== undefined) updateData.supplierCode = data.supplierCode;
+    if (data.warranty !== undefined) updateData.warranty = data.warranty;
+    if (data.notes !== undefined) updateData.notes = data.notes;
+
     const updated = await prisma.stock.update({
       where: { id },
-      data: {
-        name,
-        description: description || '',
-        unit: unit || '',
-        unitPrice: unitPrice || 0,
-        quantity: quantity || 0
-      }
+      data: updateData
     });
 
     res.json(updated);

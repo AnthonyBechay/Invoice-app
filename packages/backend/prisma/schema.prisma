@@ -57,23 +57,56 @@ model Client {
 
 // Stock/Inventory model
 model Stock {
-  id          String   @id @default(uuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  name        String
-  description String   @default("")
-  unit        String   @default("")
-  unitPrice   Float    @default(0)
-  quantity    Float    @default(0)
+  // Basic Info
+  name          String
+  description   String   @default("")
+  category      String   @default("")    // e.g., Electrical, Plumbing, HVAC, etc.
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  // Pricing
+  buyingPrice   Float    @default(0)     // Cost price (internal)
+  sellingPrice  Float    @default(0)     // Default selling price
+
+  // Inventory
+  unit          String   @default("")    // e.g., piece, meter, kg, box
+  quantity      Float    @default(0)
+  minQuantity   Float    @default(0)     // Minimum stock level (for alerts)
+
+  // Product Details (Industrial)
+  brand         String   @default("")
+  model         String   @default("")
+  partNumber    String   @default("")    // Manufacturer part number
+  sku           String   @default("")    // Stock Keeping Unit
+
+  // Technical Specifications
+  specifications String  @default("")    // JSON or text field for specs
+  voltage       String   @default("")    // For electrical items
+  power         String   @default("")    // Wattage, HP, etc.
+  material      String   @default("")    // Material type
+  size          String   @default("")    // Dimensions
+  weight        String   @default("")
+  color         String   @default("")
+
+  // Additional Info
+  supplier      String   @default("")
+  supplierCode  String   @default("")
+  warranty      String   @default("")
+  notes         String   @default("")
+
+  // Metadata
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   // Relations
   documentItems DocumentItem[]
 
   @@index([userId])
+  @@index([category])
+  @@index([partNumber])
+  @@index([sku])
 }
 
 // Document type enum
