@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { documentsAPI, paymentsAPI } from '../services/api';
 import { useDebounce } from '../hooks/useDebounce';
 import { TableSkeleton, ListItemSkeleton } from './LoadingSkeleton';
+import Papa from 'papaparse';
 
 const InvoicesPage = ({ navigateTo }) => {
     console.log("InvoicesPage: Component rendering");
@@ -29,6 +30,7 @@ const InvoicesPage = ({ navigateTo }) => {
     const [payFromAccount, setPayFromAccount] = useState(false);
     const [payments, setPayments] = useState([]);
     const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
+    const fileInputRef = useRef(null);
 
     // Calculate payment status (moved outside useEffect for reuse in useMemo)
     const getPaymentStatus = (invoice) => {
@@ -380,10 +382,6 @@ const InvoicesPage = ({ navigateTo }) => {
     const displayedInvoices = searchQuery ? filteredInvoices : filteredInvoices.slice(0, displayLimit);
 
     // Calculate only unpaid amount (optimized with useMemo to prevent recalculation)
-    // Note: For scalability with thousands of invoices, consider:
-    // - Moving this calculation to a Cloud Function that updates periodically
-    // - Or using Firestore aggregation queries (requires composite indexes)
-    // - Or maintaining a separate "totals" document that gets updated on invoice changes
     const totalUnpaidAmount = useMemo(() => {
         return invoices.reduce((sum, doc) => {
             const totalPaid = doc.totalPaid || 0;
@@ -392,13 +390,187 @@ const InvoicesPage = ({ navigateTo }) => {
         }, 0);
     }, [invoices]);
 
+    // Export invoices to CSV
+    const handleExportCSV = () => {
+        const csvData = invoices.map(doc => {
+            const itemsJSON = JSON.stringify(doc.items || []);
+            const mandaysJSON = doc.mandays ? JSON.stringify(doc.mandays) : '';
+            const realMandaysJSON = doc.realMandays ? JSON.stringify(doc.realMandays) : '';
+
+            return {
+                'Document Number': doc.documentNumber || '',
+                'Client Name': doc.client?.name || doc.clientName || '',
+                'Date': (doc.date instanceof Date ? doc.date : new Date(doc.date)).toLocaleDateString(),
+                'Subtotal': doc.subtotal || 0,
+                'VAT Amount': doc.taxAmount || 0,
+                'Total': doc.total || 0,
+                'Total Paid': doc.totalPaid || 0,
+                'Labor Price': doc.laborPrice || 0,
+                'Mandays': mandaysJSON,
+                'Real Mandays': realMandaysJSON,
+                'Notes': doc.notes || '',
+                'Status': doc.status || 'DRAFT',
+                'Items JSON': itemsJSON
+            };
+        });
+
+        const csv = Papa.unparse(csvData);
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `invoices_export_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    // Import invoices from CSV
+    const handleImportCSV = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        Papa.parse(file, {
+            header: true,
+            complete: async (results) => {
+                try {
+                    const validDocuments = results.data
+                        .filter(row => row['Document Number'] && row['Document Number'].trim() !== '')
+                        .map(row => {
+                            let items = [];
+                            try {
+                                items = JSON.parse(row['Items JSON'] || '[]');
+                            } catch (e) {
+                                items = [];
+                            }
+
+                            let mandays = null;
+                            let realMandays = null;
+                            try {
+                                if (row['Mandays'] && row['Mandays'].trim() !== '') {
+                                    mandays = JSON.parse(row['Mandays']);
+                                }
+                            } catch (e) { }
+                            try {
+                                if (row['Real Mandays'] && row['Real Mandays'].trim() !== '') {
+                                    realMandays = JSON.parse(row['Real Mandays']);
+                                }
+                            } catch (e) { }
+
+                            const clientName = row['Client Name'] || '';
+                            const documentItems = [...items];
+
+                            const laborPrice = parseFloat(row['Labor Price'] || 0);
+                            if (laborPrice > 0) {
+                                documentItems.push({
+                                    name: 'Labor',
+                                    description: 'Labor',
+                                    quantity: 1,
+                                    unitPrice: laborPrice,
+                                    total: laborPrice
+                                });
+                            }
+
+                            if (mandays && typeof mandays === 'object') {
+                                const mandaysDays = mandays.days || 0;
+                                const mandaysPeople = mandays.people || 0;
+                                const mandaysCostPerDay = mandays.costPerDay || 0;
+                                const mandaysTotal = mandaysDays * mandaysPeople * mandaysCostPerDay;
+                                if (mandaysTotal > 0) {
+                                    documentItems.push({
+                                        name: 'Mandays',
+                                        description: `Mandays (${mandaysDays} days × ${mandaysPeople} people × $${mandaysCostPerDay}/day)`,
+                                        quantity: 1,
+                                        unitPrice: mandaysTotal,
+                                        total: mandaysTotal
+                                    });
+                                }
+                            }
+
+                            const subtotal = documentItems.reduce((sum, item) => sum + (parseFloat(item.total) || 0), 0);
+                            const vatAmount = parseFloat(row['VAT Amount'] || 0);
+                            const total = subtotal + vatAmount;
+
+                            let notes = row['Notes'] || '';
+                            if (realMandays && typeof realMandays === 'object') {
+                                const realMandaysDays = realMandays.days || 0;
+                                const realMandaysPeople = realMandays.people || 0;
+                                const realMandaysCostPerDay = realMandays.costPerDay || 0;
+                                const realMandaysTotal = realMandaysDays * realMandaysPeople * realMandaysCostPerDay;
+                                if (realMandaysTotal > 0) {
+                                    const realMandaysNote = `[Real Mandays Cost: ${realMandaysDays} days × ${realMandaysPeople} people × $${realMandaysCostPerDay}/day = $${realMandaysTotal}]`;
+                                    notes = notes ? `${notes}\n\n${realMandaysNote}` : realMandaysNote;
+                                }
+                            }
+
+                            return {
+                                type: 'INVOICE',
+                                documentNumber: row['Document Number'] || '',
+                                clientName: clientName,
+                                date: new Date(row['Date'] || new Date()).toISOString(),
+                                subtotal: subtotal,
+                                taxRate: 0,
+                                taxAmount: vatAmount,
+                                total: total,
+                                notes: notes,
+                                status: (row['Status'] || 'DRAFT').toUpperCase(),
+                                items: documentItems
+                            };
+                        });
+
+                    if (validDocuments.length === 0) {
+                        alert('No valid invoices found in CSV file');
+                        return;
+                    }
+
+                    await documentsAPI.batchCreate(validDocuments);
+                    await fetchData();
+                    alert(`Successfully imported ${validDocuments.length} invoices`);
+                } catch (err) {
+                    console.error('Error importing invoices:', err);
+                    alert('Failed to import invoices: ' + (err.message || 'Unknown error'));
+                }
+            },
+            error: (error) => {
+                console.error('CSV parsing error:', error);
+                alert('Failed to parse CSV file');
+            }
+        });
+
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
+    };
+
     return (
         <div>
             <div className="flex justify-between items-center mb-6">
                 <h1 className="text-3xl font-bold text-gray-800">Invoices</h1>
                 <div className="flex gap-2">
-                    <button 
-                        onClick={() => setShowCancelledModal(true)} 
+                    <button
+                        onClick={handleExportCSV}
+                        className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors"
+                        title="Export invoices to CSV"
+                    >
+                        Export CSV
+                    </button>
+                    <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors"
+                        title="Import invoices from CSV"
+                    >
+                        Import CSV
+                    </button>
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".csv"
+                        onChange={handleImportCSV}
+                        className="hidden"
+                    />
+                    <button
+                        onClick={() => setShowCancelledModal(true)}
                         className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors"
                     >
                         Cancelled ({cancelledInvoices.length})

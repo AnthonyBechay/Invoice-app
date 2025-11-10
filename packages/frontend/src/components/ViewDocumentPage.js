@@ -364,8 +364,8 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
         ) : COMPANY_INFO.logo
     };
 
-    // Parse date - handle both Date objects and ISO strings
-    const documentDate = date ? (typeof date === 'string' ? new Date(date) : date.toDate ? date.toDate() : date) : new Date();
+    // Parse date - handle both Date objects and ISO strings (PostgreSQL compatibility)
+    const documentDate = date ? new Date(date) : new Date();
 
     return (
         <div>

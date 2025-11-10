@@ -112,6 +112,12 @@ model Document {
   taxAmount       Float          @default(0)
   total           Float          @default(0)
 
+  // Additional pricing fields
+  laborPrice      Float          @default(0)
+  mandays         Json?          // JSON: { days, people, costPerDay } - revenue (shown to client)
+  realMandays     Json?          // JSON: { days, people, costPerDay } - actual cost (internal)
+  vatApplied      Boolean        @default(false)
+
   notes           String         @default("")
   status          DocumentStatus @default(DRAFT)
 

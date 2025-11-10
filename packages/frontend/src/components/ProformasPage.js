@@ -131,6 +131,45 @@ const ProformasPage = ({ navigateTo }) => {
         fetchHistoryInvoices();
     };
 
+    const handleExportCSV = () => {
+        // Prepare CSV data
+        const csvData = proformas.map(doc => {
+            // Serialize items to JSON string for CSV
+            const itemsJSON = JSON.stringify(doc.items || []);
+            const mandaysJSON = doc.mandays ? JSON.stringify(doc.mandays) : '';
+            const realMandaysJSON = doc.realMandays ? JSON.stringify(doc.realMandays) : '';
+
+            return {
+                'Document Number': doc.documentNumber || '',
+                'Client Name': doc.client?.name || doc.clientName || '',
+                'Date': new Date(doc.date).toLocaleDateString(),
+                'Subtotal': doc.subtotal || 0,
+                'VAT Amount': doc.taxAmount || 0,
+                'Total': doc.total || 0,
+                'Labor Price': doc.laborPrice || 0,
+                'Mandays': mandaysJSON,
+                'Real Mandays': realMandaysJSON,
+                'Notes': doc.notes || '',
+                'Status': doc.status || 'DRAFT',
+                'Items JSON': itemsJSON
+            };
+        });
+
+        // Convert to CSV using PapaParse
+        const csv = Papa.unparse(csvData);
+
+        // Create download link
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `proformas_export_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     const handleImportCSV = (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -344,10 +383,11 @@ const ProformasPage = ({ navigateTo }) => {
     const filteredProformas = useMemo(() => {
         return proformas.filter(doc => {
             const search = debouncedSearchQuery.toLowerCase();
+            const dateStr = new Date(doc.date).toLocaleDateString();
             return (
                 doc.documentNumber.toLowerCase().includes(search) ||
                 doc.client.name.toLowerCase().includes(search) ||
-                doc.date.toDate().toLocaleDateString().includes(search) ||
+                dateStr.includes(search) ||
                 doc.total.toString().includes(search)
             );
         });
@@ -368,14 +408,35 @@ const ProformasPage = ({ navigateTo }) => {
             <div className="flex justify-between items-center mb-6">
                 <h1 className="text-3xl font-bold text-gray-800">Proformas</h1>
                 <div className="flex gap-2">
-                    <button 
-                        onClick={() => navigateTo('newDocument')} 
+                    <button
+                        onClick={() => navigateTo('newDocument')}
                         className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-transform transform hover:scale-105"
                     >
                         + Add New Document
                     </button>
-                    <button 
-                        onClick={() => setShowDeletedModal(true)} 
+                    <button
+                        onClick={handleExportCSV}
+                        className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors"
+                        title="Export proformas to CSV"
+                    >
+                        Export CSV
+                    </button>
+                    <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors"
+                        title="Import proformas from CSV"
+                    >
+                        Import CSV
+                    </button>
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".csv"
+                        onChange={handleImportCSV}
+                        className="hidden"
+                    />
+                    <button
+                        onClick={() => setShowDeletedModal(true)}
                         className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors"
                     >
                         Cancelled ({deletedProformas.length})
@@ -468,7 +529,7 @@ const ProformasPage = ({ navigateTo }) => {
                                     <tr key={doc.id} className="border-b border-gray-200 hover:bg-gray-100">
                                         <td className="py-3 px-6 text-left">{doc.documentNumber}</td>
                                         <td className="py-3 px-6 text-left">{doc.client.name}</td>
-                                        <td className="py-3 px-6 text-center">{doc.date.toDate().toLocaleDateString()}</td>
+                                        <td className="py-3 px-6 text-center">{new Date(doc.date).toLocaleDateString()}</td>
                                         <td className="py-3 px-6 text-right font-semibold">${doc.total.toFixed(2)}</td>
                                         <td className="py-3 px-6 text-center">
                                             <div className="flex item-center justify-center gap-1">
@@ -591,7 +652,7 @@ const ProformasPage = ({ navigateTo }) => {
                                                 <td className="py-3 px-6 text-left">{doc.documentNumber}</td>
                                                 <td className="py-3 px-6 text-left">{doc.client.name}</td>
                                                 <td className="py-3 px-6 text-center">
-                                                    {doc.deletedAt?.toDate().toLocaleDateString() || 'Unknown'}
+                                                    {doc.deletedAt ? new Date(doc.deletedAt).toLocaleDateString() : 'Unknown'}
                                                 </td>
                                                 <td className="py-3 px-6 text-right font-semibold">${doc.total.toFixed(2)}</td>
                                                 <td className="py-3 px-6 text-center">
@@ -659,7 +720,7 @@ const ProformasPage = ({ navigateTo }) => {
                                         <tr key={doc.id} className="border-b border-gray-200 hover:bg-gray-100">
                                             <td className="py-3 px-6 text-left">{doc.documentNumber}</td>
                                             <td className="py-3 px-6 text-left">{doc.client.name}</td>
-                                            <td className="py-3 px-6 text-center">{doc.date.toDate().toLocaleDateString()}</td>
+                                            <td className="py-3 px-6 text-center">{new Date(doc.date).toLocaleDateString()}</td>
                                             <td className="py-3 px-6 text-right font-semibold">${doc.total.toFixed(2)}</td>
                                             <td className="py-3 px-6 text-center">
                                                 <button 

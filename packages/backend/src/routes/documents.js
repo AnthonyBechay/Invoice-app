@@ -77,16 +77,29 @@ router.get('/:id', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const { items, ...documentData } = req.body;
+    const { items, mandays, realMandays, ...documentData } = req.body;
+
+    // Prepare data object with proper JSON handling for mandays fields
+    const data = {
+      userId,
+      ...documentData,
+      items: items ? {
+        create: items
+      } : undefined
+    };
+
+    // Only include mandays if it exists and has valid data
+    if (mandays && typeof mandays === 'object') {
+      data.mandays = mandays;
+    }
+
+    // Only include realMandays if it exists and has valid data
+    if (realMandays && typeof realMandays === 'object') {
+      data.realMandays = realMandays;
+    }
 
     const document = await prisma.document.create({
-      data: {
-        userId,
-        ...documentData,
-        items: items ? {
-          create: items
-        } : undefined
-      },
+      data,
       include: {
         items: true,
         client: true
@@ -106,7 +119,7 @@ router.put('/:id', async (req, res, next) => {
   try {
     const userId = req.user.id;
     const { id } = req.params;
-    const { items, ...updateData } = req.body;
+    const { items, mandays, realMandays, ...updateData } = req.body;
 
     const existingDocument = await prisma.document.findFirst({
       where: { id, userId }
@@ -116,16 +129,29 @@ router.put('/:id', async (req, res, next) => {
       return res.status(404).json({ error: 'Document not found' });
     }
 
+    // Prepare update data with proper JSON handling
+    const data = {
+      ...updateData,
+      items: items ? {
+        deleteMany: {},
+        create: items
+      } : undefined
+    };
+
+    // Only include mandays if explicitly provided (allow null to clear)
+    if (mandays !== undefined) {
+      data.mandays = mandays && typeof mandays === 'object' ? mandays : null;
+    }
+
+    // Only include realMandays if explicitly provided (allow null to clear)
+    if (realMandays !== undefined) {
+      data.realMandays = realMandays && typeof realMandays === 'object' ? realMandays : null;
+    }
+
     // Update document with items if provided
     const document = await prisma.document.update({
       where: { id },
-      data: {
-        ...updateData,
-        items: items ? {
-          deleteMany: {},
-          create: items
-        } : undefined
-      },
+      data,
       include: {
         items: true,
         client: true
@@ -215,34 +241,48 @@ router.post('/:id/convert', async (req, res, next) => {
       newDocumentNumber = `INV-${year}-${String(result.lastId).padStart(3, '0')}`;
     }
 
-    // Create new invoice based on proforma
+    // Create new invoice based on proforma (copy all fields including mandays)
+    const invoiceData = {
+      userId,
+      type: 'INVOICE',
+      documentNumber: newDocumentNumber,
+      clientId: proforma.clientId,
+      clientName: proforma.clientName,
+      date: proforma.date,
+      dueDate: proforma.dueDate,
+      subtotal: proforma.subtotal,
+      taxRate: proforma.taxRate,
+      taxAmount: proforma.taxAmount,
+      total: proforma.total,
+      laborPrice: proforma.laborPrice || 0,
+      vatApplied: proforma.vatApplied || false,
+      notes: proforma.notes,
+      status: proforma.status,
+      convertedFrom: id,
+      items: {
+        create: proforma.items.map(item => ({
+          stockId: item.stockId,
+          name: item.name,
+          description: item.description,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          total: item.total
+        }))
+      }
+    };
+
+    // Copy mandays if it exists
+    if (proforma.mandays) {
+      invoiceData.mandays = proforma.mandays;
+    }
+
+    // Copy realMandays if it exists
+    if (proforma.realMandays) {
+      invoiceData.realMandays = proforma.realMandays;
+    }
+
     const invoice = await prisma.document.create({
-      data: {
-        userId,
-        type: 'INVOICE',
-        documentNumber: newDocumentNumber,
-        clientId: proforma.clientId,
-        clientName: proforma.clientName,
-        date: proforma.date,
-        dueDate: proforma.dueDate,
-        subtotal: proforma.subtotal,
-        taxRate: proforma.taxRate,
-        taxAmount: proforma.taxAmount,
-        total: proforma.total,
-        notes: proforma.notes,
-        status: proforma.status,
-        convertedFrom: id,
-        items: {
-          create: proforma.items.map(item => ({
-            stockId: item.stockId,
-            name: item.name,
-            description: item.description,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            total: item.total
-          }))
-        }
-      },
+      data: invoiceData,
       include: {
         items: true,
         client: true
@@ -277,16 +317,16 @@ router.post('/batch', async (req, res, next) => {
 
     const created = await prisma.$transaction(
       documents.map(doc => {
-        const { items, ...documentData } = doc;
-        
+        const { items, mandays, realMandays, ...documentData } = doc;
+
         // Validate document type
         if (documentData.type && !['PROFORMA', 'INVOICE'].includes(documentData.type.toUpperCase())) {
           throw new Error(`Invalid document type: ${documentData.type}. Must be PROFORMA or INVOICE`);
         }
-        
+
         // Convert type to enum
         const type = documentData.type ? documentData.type.toUpperCase() : 'PROFORMA';
-        
+
         // Validate status
         let status = documentData.status || 'DRAFT';
         if (status) {
@@ -300,23 +340,36 @@ router.post('/batch', async (req, res, next) => {
           }
         }
 
+        // Prepare data with proper handling of JSON fields
+        const data = {
+          userId,
+          type,
+          status,
+          ...documentData,
+          items: items ? {
+            create: items.map(item => ({
+              name: item.name || '',
+              description: item.description || '',
+              quantity: parseFloat(item.quantity) || 0,
+              unitPrice: parseFloat(item.unitPrice) || 0,
+              total: parseFloat(item.total) || (parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0),
+              stockId: item.stockId || null
+            }))
+          } : undefined
+        };
+
+        // Add mandays if provided
+        if (mandays && typeof mandays === 'object') {
+          data.mandays = mandays;
+        }
+
+        // Add realMandays if provided
+        if (realMandays && typeof realMandays === 'object') {
+          data.realMandays = realMandays;
+        }
+
         return prisma.document.create({
-          data: {
-            userId,
-            type,
-            status,
-            ...documentData,
-            items: items ? {
-              create: items.map(item => ({
-                name: item.name || '',
-                description: item.description || '',
-                quantity: parseFloat(item.quantity) || 0,
-                unitPrice: parseFloat(item.unitPrice) || 0,
-                total: parseFloat(item.total) || (parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0),
-                stockId: item.stockId || null
-              }))
-            } : undefined
-          },
+          data,
           include: {
             items: true,
             client: true
