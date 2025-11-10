@@ -73,11 +73,33 @@ router.get('/:id', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
   try {
     const userId = req.user.id;
+    const { documentId, ...paymentData } = req.body;
+
+    // Validate that payment can only be added to invoices
+    if (documentId) {
+      const document = await prisma.document.findFirst({
+        where: {
+          id: documentId,
+          userId
+        }
+      });
+
+      if (!document) {
+        return res.status(404).json({ error: 'Document not found' });
+      }
+
+      if (document.type !== 'INVOICE') {
+        return res.status(400).json({ 
+          error: 'Payments can only be added to invoices. Proformas cannot receive payments.' 
+        });
+      }
+    }
 
     const payment = await prisma.payment.create({
       data: {
         userId,
-        ...req.body
+        documentId,
+        ...paymentData
       },
       include: {
         document: true,

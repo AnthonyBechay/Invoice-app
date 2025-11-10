@@ -4,9 +4,9 @@
 export const errorHandler = (err, req, res, next) => {
   console.error('Error:', err);
 
-  // Firebase Admin errors
-  if (err.code && err.code.startsWith('auth/')) {
-    return res.status(401).json({ error: err.message });
+  // Authentication errors
+  if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
+    return res.status(401).json({ error: 'Invalid or expired token' });
   }
 
   // Validation errors

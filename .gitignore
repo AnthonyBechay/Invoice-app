@@ -79,10 +79,20 @@ out
 
 # Backend specific
 serviceAccountKey.json
+voltventures-*.json
+*-firebase-adminsdk-*.json
+
+# Migration/export files
+*.csv
+firebase-export/
+firebase-structure/
+documentdata.txt
 
 # OS files
 .DS_Store
 Thumbs.db
+nul
+NUL
 
 # IDE
 .vscode

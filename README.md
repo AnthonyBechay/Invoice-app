@@ -19,7 +19,7 @@ A modern invoice management application with a Node.js backend (deployed on Rend
    ```bash
    cd packages/backend
    cp .env.example .env
-   # Add your Firebase service account credentials
+   # Set DATABASE_URL and JWT_SECRET
    ```
 
 3. **Configure Frontend**
@@ -74,10 +74,10 @@ Invoice-app/
 
 ## Architecture
 
-- **Frontend**: React + Firebase Auth (client-side only)
-- **Backend**: Node.js + Express + Firebase Admin SDK
-- **Database**: Firestore (accessed via backend)
-- **Auth**: Firebase Authentication
+- **Frontend**: React + JWT Authentication
+- **Backend**: Node.js + Express + Prisma ORM
+- **Database**: PostgreSQL (deployed on Render)
+- **Auth**: JWT token-based authentication
 
 ## Key Features
 

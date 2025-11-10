@@ -205,9 +205,18 @@ export const documentsAPI = {
     });
   },
 
-  convertToInvoice: async (id) => {
+  convertToInvoice: async (id, newDocumentNumber = null) => {
+    const body = newDocumentNumber ? { newDocumentNumber } : {};
     return apiRequest(`/documents/${id}/convert`, {
       method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+
+  batchCreate: async (documents) => {
+    return apiRequest('/documents/batch', {
+      method: 'POST',
+      body: JSON.stringify({ documents }),
     });
   },
 };

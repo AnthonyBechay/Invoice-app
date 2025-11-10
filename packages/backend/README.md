@@ -6,13 +6,13 @@ Node.js Express backend for the Invoice App, providing REST API endpoints for al
 
 - **Runtime**: Node.js 18+
 - **Framework**: Express.js
-- **Database**: Firebase Firestore (via Admin SDK)
-- **Auth**: Firebase Admin SDK for token verification
+- **Database**: PostgreSQL (via Prisma ORM)
+- **Auth**: JWT token verification
 - **Security**: Helmet, CORS, Rate Limiting
 
 ## API Routes
 
-All routes require authentication via Firebase token in `Authorization: Bearer <token>` header.
+All routes require authentication via JWT token in `Authorization: Bearer <token>` header.
 
 ### Core Endpoints
 
@@ -33,7 +33,8 @@ Create a `.env` file:
 ```env
 PORT=5000
 NODE_ENV=development
-GOOGLE_APPLICATION_CREDENTIALS=./serviceAccountKey.json
+DATABASE_URL=postgresql://user:password@localhost:5432/invoice_app
+JWT_SECRET=your-secret-key-change-this-in-production
 FRONTEND_URL=http://localhost:3000
 ```
 

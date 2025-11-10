@@ -1,9 +1,12 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { documentsAPI } from '../services/api';
 import { useDebounce } from '../hooks/useDebounce';
 import { TableSkeleton } from './LoadingSkeleton';
+import { useAuth } from '../contexts/AuthContext';
+import Papa from 'papaparse';
 
 const ProformasPage = ({ navigateTo }) => {
+    const { user } = useAuth();
     const [proformas, setProformas] = useState([]);
     const [deletedProformas, setDeletedProformas] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -20,6 +23,7 @@ const ProformasPage = ({ navigateTo }) => {
     const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState(null);
     const [convertingIds, setConvertingIds] = useState(new Set()); // Track converting proformas
+    const fileInputRef = useRef(null);
 
     const fetchProformas = async () => {
         console.log("ProformasPage: Fetching proformas");
@@ -76,56 +80,30 @@ const ProformasPage = ({ navigateTo }) => {
 
 
     const fetchHistoryInvoices = async (loadMore = false) => {
-        if (!auth.currentUser) return;
+        if (!user) return;
         setHistoryLoading(true);
 
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-        // COMMENTED OUT: Requires Firebase composite index - will enable later
-        // let q = query(
-        //     collection(db, `documents/${auth.currentUser.uid}/userDocuments`),
-        //     where('type', '==', 'invoice'),
-        //     where('date', '>=', thirtyDaysAgo),
-        //     orderBy('date', 'desc'),
-        //     limit(10)
-        // );
-
-        // if (loadMore && lastVisible) {
-        //     q = query(
-        //         collection(db, `documents/${auth.currentUser.uid}/userDocuments`),
-        //         where('type', '==', 'invoice'),
-        //         where('date', '>=', thirtyDaysAgo),
-        //         orderBy('date', 'desc'),
-        //         startAfter(lastVisible),
-        //         limit(10)
-        //     );
-        // }
-        
-        // Fallback: Fetch all invoices and filter in memory
-        let q = query(
-            collection(db, `documents/${auth.currentUser.uid}/userDocuments`),
-            where('type', '==', 'invoice')
-        );
-
         try {
-            const documentSnapshots = await getDocs(q);
-            let newInvoices = documentSnapshots.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            // Fetch all invoices and filter by date
+            const allInvoices = await documentsAPI.getAll('INVOICE');
             
-            // Filter by date in memory (since composite index is disabled)
-            newInvoices = newInvoices.filter(inv => {
-                const invDate = inv.date?.toDate ? inv.date.toDate() : new Date(inv.date);
+            // Filter by date (last 30 days)
+            let newInvoices = allInvoices.filter(inv => {
+                const invDate = new Date(inv.date);
                 return invDate >= thirtyDaysAgo;
             });
             
-            // Sort by date desc in memory
+            // Sort by date desc
             newInvoices.sort((a, b) => {
-                const dateA = a.date?.toDate ? a.date.toDate() : new Date(a.date);
-                const dateB = b.date?.toDate ? b.date.toDate() : new Date(b.date);
+                const dateA = new Date(a.date);
+                const dateB = new Date(b.date);
                 return dateB - dateA;
             });
 
-            // Pagination in memory (limit to 10 per load)
+            // Pagination (limit to 10 per load)
             if (loadMore) {
                 const currentCount = historyInvoices.length;
                 newInvoices = newInvoices.slice(currentCount, currentCount + 10);
@@ -153,8 +131,138 @@ const ProformasPage = ({ navigateTo }) => {
         fetchHistoryInvoices();
     };
 
+    const handleImportCSV = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        Papa.parse(file, {
+            header: true,
+            complete: async (results) => {
+                try {
+                    const validDocuments = results.data
+                        .filter(row => row['Document Number'] && row['Document Number'].trim() !== '')
+                        .map(row => {
+                            // Parse items JSON
+                            let items = [];
+                            try {
+                                items = JSON.parse(row['Items JSON'] || '[]');
+                            } catch (e) {
+                                items = [];
+                            }
+
+                            // Parse mandays and realMandays if they exist
+                            let mandays = null;
+                            let realMandays = null;
+                            try {
+                                if (row['Mandays'] && row['Mandays'].trim() !== '') {
+                                    mandays = JSON.parse(row['Mandays']);
+                                }
+                            } catch (e) {
+                                // Ignore
+                            }
+                            try {
+                                if (row['Real Mandays'] && row['Real Mandays'].trim() !== '') {
+                                    realMandays = JSON.parse(row['Real Mandays']);
+                                }
+                            } catch (e) {
+                                // Ignore
+                            }
+
+                            // Find client by name
+                            const clientName = row['Client Name'] || '';
+                            
+                            // Build items array with laborPrice and mandays as items
+                            const documentItems = [...items];
+                            
+                            // Add labor price as item if exists
+                            const laborPrice = parseFloat(row['Labor Price'] || 0);
+                            if (laborPrice > 0) {
+                                documentItems.push({
+                                    name: 'Labor',
+                                    description: 'Labor',
+                                    quantity: 1,
+                                    unitPrice: laborPrice,
+                                    total: laborPrice
+                                });
+                            }
+                            
+                            // Add mandays as item if exists
+                            if (mandays && typeof mandays === 'object') {
+                                const mandaysDays = mandays.days || 0;
+                                const mandaysPeople = mandays.people || 0;
+                                const mandaysCostPerDay = mandays.costPerDay || 0;
+                                const mandaysTotal = mandaysDays * mandaysPeople * mandaysCostPerDay;
+                                if (mandaysTotal > 0) {
+                                    documentItems.push({
+                                        name: 'Mandays',
+                                        description: `Mandays (${mandaysDays} days × ${mandaysPeople} people × $${mandaysCostPerDay}/day)`,
+                                        quantity: 1,
+                                        unitPrice: mandaysTotal,
+                                        total: mandaysTotal
+                                    });
+                                }
+                            }
+
+                            // Calculate subtotal from items
+                            const subtotal = documentItems.reduce((sum, item) => sum + (parseFloat(item.total) || 0), 0);
+                            const vatAmount = parseFloat(row['VAT Amount'] || 0);
+                            const total = subtotal + vatAmount;
+
+                            // Add realMandays to notes if exists
+                            let notes = row['Notes'] || '';
+                            if (realMandays && typeof realMandays === 'object') {
+                                const realMandaysDays = realMandays.days || 0;
+                                const realMandaysPeople = realMandays.people || 0;
+                                const realMandaysCostPerDay = realMandays.costPerDay || 0;
+                                const realMandaysTotal = realMandaysDays * realMandaysPeople * realMandaysCostPerDay;
+                                if (realMandaysTotal > 0) {
+                                    const realMandaysNote = `[Real Mandays Cost: ${realMandaysDays} days × ${realMandaysPeople} people × $${realMandaysCostPerDay}/day = $${realMandaysTotal}]`;
+                                    notes = notes ? `${notes}\n\n${realMandaysNote}` : realMandaysNote;
+                                }
+                            }
+
+                            return {
+                                type: 'PROFORMA',
+                                documentNumber: row['Document Number'] || '',
+                                clientName: clientName,
+                                date: new Date(row['Date'] || new Date()).toISOString(),
+                                subtotal: subtotal,
+                                taxRate: 0,
+                                taxAmount: vatAmount,
+                                total: total,
+                                notes: notes,
+                                status: (row['Status'] || 'DRAFT').toUpperCase(),
+                                items: documentItems
+                            };
+                        });
+
+                    if (validDocuments.length === 0) {
+                        alert('No valid proformas found in CSV file');
+                        return;
+                    }
+
+                    await documentsAPI.batchCreate(validDocuments);
+                    await fetchProformas();
+                    alert(`Successfully imported ${validDocuments.length} proformas`);
+                } catch (err) {
+                    console.error('Error importing proformas:', err);
+                    alert('Failed to import proformas: ' + (err.message || 'Unknown error'));
+                }
+            },
+            error: (error) => {
+                console.error('CSV parsing error:', error);
+                alert('Failed to parse CSV file');
+            }
+        });
+
+        // Reset file input
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
+    };
+
     const handleConvertToInvoice = async (proforma) => {
-        if (!auth.currentUser) return;
+        if (!user) return;
 
         // Prevent double click
         if (convertingIds.has(proforma.id)) {
@@ -166,53 +274,11 @@ const ProformasPage = ({ navigateTo }) => {
         setConvertingIds(prev => new Set(prev).add(proforma.id));
 
         try {
-            // Get next invoice number
-            const year = new Date().getFullYear();
-            const counterRef = doc(db, `counters/${auth.currentUser.uid}/documentCounters`, 'invoiceCounter');
-            const newInvoiceNumber = await runTransaction(db, async (transaction) => {
-                const counterDoc = await transaction.get(counterRef);
-                let newLastId = 1;
-                if (counterDoc.exists()) {
-                    newLastId = counterDoc.data().lastId + 1;
-                }
-                transaction.set(counterRef, { lastId: newLastId }, { merge: true });
-                return `INV-${year}-${String(newLastId).padStart(3, '0')}`;
-            });
+            // Convert proforma to invoice using API (backend will generate invoice number)
+            await documentsAPI.convertToInvoice(proforma.id);
 
-            // Create new invoice document
-            // NOTE: Do NOT transfer payments from proforma - payments should only be on invoices or client accounts
-            const invoiceData = {
-                ...proforma,
-                type: 'invoice',
-                documentNumber: newInvoiceNumber,
-                invoiceNumber: newInvoiceNumber,
-                proformaNumber: proforma.documentNumber,
-                convertedFrom: proforma.id,
-                date: new Date(),
-                // Clear any old payment data (proformas should not have had payments)
-                payments: [],
-                totalPaid: 0,
-                paid: false,
-                lastPaymentDate: null
-            };
-
-            // Remove proforma-specific fields
-            delete invoiceData.id;
-            delete invoiceData.converted;
-            delete invoiceData.proformaNumber; // Already stored separately
-
-            // Add the new invoice
-            const newInvoiceRef = await addDoc(collection(db, `documents/${auth.currentUser.uid}/userDocuments`), invoiceData);
-
-            // Mark original proforma as converted
-            const proformaRef = doc(db, `documents/${auth.currentUser.uid}/userDocuments`, proforma.id);
-            await updateDoc(proformaRef, {
-                converted: true,
-                convertedToInvoice: true,
-                convertedAt: new Date(),
-                convertedToInvoiceNumber: newInvoiceNumber,
-                convertedToInvoiceId: newInvoiceRef.id
-            });
+            // Refresh proformas list
+            await fetchProformas();
 
             // Navigate to invoices page
             navigateTo('invoices');
@@ -229,40 +295,38 @@ const ProformasPage = ({ navigateTo }) => {
     };
 
     const handleDeleteProforma = async (proformaId) => {
-        if (!auth.currentUser) return;
+        if (!user) return;
         
         try {
-            const docRef = doc(db, `documents/${auth.currentUser.uid}/userDocuments`, proformaId);
-            await updateDoc(docRef, {
-                deleted: true,
-                deletedAt: new Date()
+            await documentsAPI.update(proformaId, {
+                status: 'cancelled'
             });
             setConfirmDelete(null);
+            await fetchProformas();
         } catch (error) {
             console.error("Error deleting proforma: ", error);
         }
     };
 
     const handleRestoreProforma = async (proformaId) => {
-        if (!auth.currentUser) return;
+        if (!user) return;
         
         try {
-            const docRef = doc(db, `documents/${auth.currentUser.uid}/userDocuments`, proformaId);
-            await updateDoc(docRef, {
-                deleted: false,
-                deletedAt: null
+            await documentsAPI.update(proformaId, {
+                status: 'draft'
             });
+            await fetchProformas();
         } catch (error) {
             console.error("Error restoring proforma: ", error);
         }
     };
 
     const handlePermanentDelete = async (proformaId) => {
-        if (!auth.currentUser) return;
+        if (!user) return;
         
         try {
-            const docRef = doc(db, `documents/${auth.currentUser.uid}/userDocuments`, proformaId);
-            await deleteDoc(docRef);
+            await documentsAPI.delete(proformaId);
+            await fetchProformas();
         } catch (error) {
             console.error("Error permanently deleting proforma: ", error);
         }

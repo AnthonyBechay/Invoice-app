@@ -8,7 +8,7 @@ React frontend for the Invoice App.
 - **Styling**: Tailwind CSS
 - **PDF Generation**: jsPDF + html2canvas
 - **CSV Parsing**: PapaParse
-- **Auth**: Firebase Authentication
+- **Auth**: JWT Authentication
 - **API Client**: Fetch API with custom client wrapper
 
 ## Environment Variables
@@ -64,4 +64,4 @@ const clients = await clientsApi.getAll();
 const newClient = await clientsApi.create(clientData);
 ```
 
-All API calls automatically include Firebase authentication tokens.
+All API calls automatically include JWT authentication tokens.

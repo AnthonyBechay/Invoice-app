@@ -171,7 +171,7 @@ router.post('/:id/convert', async (req, res, next) => {
   try {
     const userId = req.user.id;
     const { id } = req.params;
-    const { newDocumentNumber } = req.body;
+    let { newDocumentNumber } = req.body;
 
     const proforma = await prisma.document.findFirst({
       where: {
@@ -187,15 +187,39 @@ router.post('/:id/convert', async (req, res, next) => {
       return res.status(404).json({ error: 'Document not found' });
     }
 
-    if (proforma.type !== 'proforma') {
+    if (proforma.type !== 'PROFORMA') {
       return res.status(400).json({ error: 'Only proformas can be converted to invoices' });
+    }
+
+    // Generate invoice number if not provided
+    if (!newDocumentNumber) {
+      const year = new Date().getFullYear();
+      const result = await prisma.counter.upsert({
+        where: {
+          userId_type: {
+            userId,
+            type: 'invoice'
+          }
+        },
+        update: {
+          lastId: {
+            increment: 1
+          }
+        },
+        create: {
+          userId,
+          type: 'invoice',
+          lastId: 1
+        }
+      });
+      newDocumentNumber = `INV-${year}-${String(result.lastId).padStart(3, '0')}`;
     }
 
     // Create new invoice based on proforma
     const invoice = await prisma.document.create({
       data: {
         userId,
-        type: 'invoice',
+        type: 'INVOICE',
         documentNumber: newDocumentNumber,
         clientId: proforma.clientId,
         clientName: proforma.clientName,
@@ -234,6 +258,74 @@ router.post('/:id/convert', async (req, res, next) => {
     });
 
     res.status(201).json(invoice);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * Batch import documents (proformas/invoices)
+ */
+router.post('/batch', async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { documents } = req.body;
+
+    if (!Array.isArray(documents)) {
+      return res.status(400).json({ error: 'Documents must be an array' });
+    }
+
+    const created = await prisma.$transaction(
+      documents.map(doc => {
+        const { items, ...documentData } = doc;
+        
+        // Validate document type
+        if (documentData.type && !['PROFORMA', 'INVOICE'].includes(documentData.type.toUpperCase())) {
+          throw new Error(`Invalid document type: ${documentData.type}. Must be PROFORMA or INVOICE`);
+        }
+        
+        // Convert type to enum
+        const type = documentData.type ? documentData.type.toUpperCase() : 'PROFORMA';
+        
+        // Validate status
+        let status = documentData.status || 'DRAFT';
+        if (status) {
+          status = status.toUpperCase();
+          // Validate status based on type
+          if (type === 'PROFORMA' && !['DRAFT', 'SENT', 'CONVERTED'].includes(status)) {
+            status = 'DRAFT';
+          }
+          if (type === 'INVOICE' && !['DRAFT', 'SENT', 'PAID', 'CANCELLED'].includes(status)) {
+            status = 'DRAFT';
+          }
+        }
+
+        return prisma.document.create({
+          data: {
+            userId,
+            type,
+            status,
+            ...documentData,
+            items: items ? {
+              create: items.map(item => ({
+                name: item.name || '',
+                description: item.description || '',
+                quantity: parseFloat(item.quantity) || 0,
+                unitPrice: parseFloat(item.unitPrice) || 0,
+                total: parseFloat(item.total) || (parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0),
+                stockId: item.stockId || null
+              }))
+            } : undefined
+          },
+          include: {
+            items: true,
+            client: true
+          }
+        });
+      })
+    );
+
+    res.status(201).json(created);
   } catch (error) {
     next(error);
   }

@@ -10,7 +10,7 @@ projects:
             runtime: node
             plan: free
             region: frankfurt
-            buildCommand: pnpm install && pnpm run build
+            buildCommand: pnpm install && cd packages/backend && pnpm run build && pnpm run prisma:migrate || true
             startCommand: pnpm start
             healthCheckPath: /health
             autoDeployTrigger: commit

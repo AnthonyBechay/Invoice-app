@@ -76,40 +76,55 @@ model Stock {
   @@index([userId])
 }
 
+// Document type enum
+enum DocumentType {
+  PROFORMA
+  INVOICE
+}
+
+// Document status enum
+enum DocumentStatus {
+  DRAFT
+  SENT
+  PAID      // Only for invoices
+  CANCELLED // Only for invoices
+  CONVERTED // Only for proformas
+}
+
 // Document model (Proformas and Invoices)
 model Document {
-  id              String   @id @default(uuid())
+  id              String         @id @default(uuid())
   userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  type            String   // 'proforma' or 'invoice'
+  type            DocumentType   // PROFORMA or INVOICE
   documentNumber  String
 
   clientId        String?
-  client          Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  clientName      String   @default("")
+  client          Client?        @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  clientName      String         @default("")
 
-  date            DateTime @default(now())
+  date            DateTime       @default(now())
   dueDate         DateTime?
 
-  subtotal        Float    @default(0)
-  taxRate         Float    @default(0)
-  taxAmount       Float    @default(0)
-  total           Float    @default(0)
+  subtotal        Float          @default(0)
+  taxRate         Float          @default(0)
+  taxAmount       Float          @default(0)
+  total           Float          @default(0)
 
-  notes           String   @default("")
-  status          String   @default("draft") // draft, sent, paid, cancelled
+  notes           String         @default("")
+  status          DocumentStatus @default(DRAFT)
 
   // Conversion tracking
-  convertedFrom   String?  // ID of proforma if this is converted invoice
-  convertedTo     String?  // ID of invoice if this proforma was converted
+  convertedFrom   String?        // ID of proforma if this is converted invoice
+  convertedTo     String?        // ID of invoice if this proforma was converted
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
   // Relations
   items           DocumentItem[]
-  payments        Payment[]
+  payments        Payment[]      // Only populated for invoices (enforced in app logic)
 
   @@index([userId])
   @@index([type])
