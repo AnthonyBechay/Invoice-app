@@ -16,7 +16,8 @@ router.get('/', async (req, res, next) => {
     };
 
     if (type) {
-      where.type = type;
+      // Convert to uppercase for Prisma enum (PROFORMA, INVOICE)
+      where.type = type.toUpperCase();
     }
 
     if (search) {

@@ -24,6 +24,9 @@ const RegisterPage = ({ setPage }) => {
             const result = await register(email, password, name);
             if (!result.success) {
                 setError(result.error || 'Failed to create an account. Please try again later.');
+            } else {
+                // Successfully registered - redirect to dashboard
+                setPage('dashboard');
             }
         } catch (err) {
             console.error("Registration Error:", err);
