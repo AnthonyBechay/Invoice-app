@@ -69,6 +69,12 @@ const InvoicesPage = ({ navigateTo }) => {
 
             console.log("InvoicesPage: Received", invoicesData.length, "invoices and", paymentsData.length, "payments");
 
+            // Calculate totalPaid for each invoice from payments
+            invoicesData.forEach((doc) => {
+                const invoicePayments = paymentsData.filter(p => p.documentId === doc.id);
+                doc.totalPaid = invoicePayments.reduce((sum, p) => sum + p.amount, 0);
+            });
+
             // Separate active and cancelled invoices
             const activeDocs = [];
             const cancelledDocs = [];
@@ -147,7 +153,7 @@ const InvoicesPage = ({ navigateTo }) => {
 
     // Calculate client account balance (unallocated payments)
     const getClientBalance = (clientId) => {
-        const clientPayments = payments.filter(p => p.clientId === clientId && !p.settledToDocument);
+        const clientPayments = payments.filter(p => p.clientId === clientId && !p.documentId);
         return clientPayments.reduce((sum, p) => sum + p.amount, 0);
     };
 

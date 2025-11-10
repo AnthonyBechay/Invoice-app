@@ -275,9 +275,9 @@ const PaymentsPage = () => {
     // Memoized client documents lookup
     const getClientDocuments = useCallback((clientId) => {
         return documents.filter(doc =>
-            doc.type === 'invoice' &&
+            doc.type?.toUpperCase() === 'INVOICE' &&
             doc.clientId === clientId &&
-            doc.status !== 'cancelled'
+            doc.status?.toUpperCase() !== 'CANCELLED'
         );
     }, [documents]);
 

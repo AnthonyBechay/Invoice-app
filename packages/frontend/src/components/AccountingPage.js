@@ -86,7 +86,8 @@ const AccountingPage = () => {
                 const docDate = new Date(doc.date);
                 return docDate >= dateRange.start &&
                        docDate <= dateRange.end &&
-                       doc.status !== 'cancelled' &&
+                       doc.status?.toUpperCase() !== 'CANCELLED' &&
+                       doc.status?.toUpperCase() !== 'CONVERTED' &&
                        !doc.deleted &&
                        !doc.transformedTo &&
                        !doc.convertedTo;
@@ -105,9 +106,9 @@ const AccountingPage = () => {
 
             // Document type filter
             if (documentTypeFilter === 'invoice') {
-                filteredDocs = filteredDocs.filter(doc => doc.type === 'invoice');
+                filteredDocs = filteredDocs.filter(doc => doc.type?.toUpperCase() === 'INVOICE');
             } else if (documentTypeFilter === 'proforma') {
-                filteredDocs = filteredDocs.filter(doc => doc.type === 'proforma');
+                filteredDocs = filteredDocs.filter(doc => doc.type?.toUpperCase() === 'PROFORMA');
             }
 
             // Category filter
@@ -138,7 +139,7 @@ const AccountingPage = () => {
                 thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
                 filteredDocs = filteredDocs.filter(doc => {
                     const totalPaid = doc.totalPaid || 0;
-                    return doc.type === 'invoice' && totalPaid < doc.total && new Date(doc.date) < thirtyDaysAgo;
+                    return doc.type?.toUpperCase() === 'INVOICE' && totalPaid < doc.total && new Date(doc.date) < thirtyDaysAgo;
                 });
             }
 
@@ -306,12 +307,12 @@ const AccountingPage = () => {
             let status = 'Active';
             if (doc.convertedTo) status = 'Converted';
             else if (doc.transformedTo) status = 'Transformed';
-            else if (doc.status === 'cancelled') status = 'Cancelled';
+            else if (doc.status?.toUpperCase() === 'CANCELLED') status = 'Cancelled';
 
             return [
                 new Date(doc.date).toLocaleDateString(),
                 doc.documentNumber,
-                doc.type === 'invoice' ? 'Invoice' : 'Proforma',
+                doc.type?.toUpperCase() === 'INVOICE' ? 'Invoice' : 'Proforma',
                 status,
                 doc.clientName || 'Unknown',
                 itemsRevenue.toFixed(2),
@@ -761,11 +762,11 @@ const AccountingPage = () => {
                                             <td className="py-4 px-6 text-center">
                                                 <div className="flex flex-col items-center space-y-1">
                                                     <span className={`px-2 py-1 text-xs rounded-full font-medium ${
-                                                        doc.type === 'invoice'
+                                                        doc.type?.toUpperCase() === 'INVOICE'
                                                             ? 'bg-blue-100 text-blue-800'
                                                             : 'bg-purple-100 text-purple-800'
                                                     }`}>
-                                                        {doc.type === 'invoice' ? 'Invoice' : 'Proforma'}
+                                                        {doc.type?.toUpperCase() === 'INVOICE' ? 'Invoice' : 'Proforma'}
                                                     </span>
                                                     {doc.convertedTo && (
                                                         <span className="px-2 py-1 text-xs rounded-full bg-orange-100 text-orange-800 font-medium">
