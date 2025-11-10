@@ -1,0 +1,39 @@
+version: "1"
+
+projects:
+  - name: invoice-app
+    environments:
+      - name: Production
+        services:
+          - type: web
+            name: invoice-app-backend
+            runtime: node
+            plan: free
+            region: frankfurt
+            buildCommand: pnpm install && cd packages/backend && pnpm run build && pnpm run prisma:migrate || true
+            startCommand: pnpm start
+            healthCheckPath: /health
+            autoDeployTrigger: commit
+            envVars:
+              - key: NODE_ENV
+                value: production
+              - key: PORT
+                value: 10000
+              - key: FRONTEND_URL
+                value: https://invoice-app-xi-neon.vercel.app
+              - key: JWT_SECRET
+                generateValue: true
+              - key: DATABASE_URL
+                fromDatabase:
+                  name: invoice-app-db
+                  property: connectionString
+        databases:
+          - name: invoice-app-db
+            databaseName: invoice_app_db
+            user: invoice_app_user
+            plan: free
+            region: frankfurt
+            ipAllowList:
+              - source: 0.0.0.0/0
+                description: everywhere
+            postgresMajorVersion: "17"

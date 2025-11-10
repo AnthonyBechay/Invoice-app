@@ -1,0 +1,245 @@
+// Prisma Schema for Invoice App
+// PostgreSQL Database
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model (for authentication)
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String   // Hashed password
+  name      String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  clients   Client[]
+  stock     Stock[]
+  documents Document[]
+  payments  Payment[]
+  expenses  Expense[]
+  settings  Settings?
+  counters  Counter[]
+
+  @@index([email])
+}
+
+// Client model
+model Client {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  clientId  Int?     // Sequential ID for display
+  name      String
+  email     String   @default("")
+  phone     String   @default("")
+  location  String   @default("")
+  vatNumber String   @default("")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  documents Document[]
+  payments  Payment[]
+
+  @@index([userId])
+  @@index([clientId])
+}
+
+// Stock/Inventory model
+model Stock {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String   @default("")
+  unit        String   @default("")
+  unitPrice   Float    @default(0)
+  quantity    Float    @default(0)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  documentItems DocumentItem[]
+
+  @@index([userId])
+}
+
+// Document type enum
+enum DocumentType {
+  PROFORMA
+  INVOICE
+}
+
+// Document status enum
+enum DocumentStatus {
+  DRAFT
+  SENT
+  PAID      // Only for invoices
+  CANCELLED // Only for invoices
+  CONVERTED // Only for proformas
+}
+
+// Document model (Proformas and Invoices)
+model Document {
+  id              String         @id @default(uuid())
+  userId          String
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type            DocumentType   // PROFORMA or INVOICE
+  documentNumber  String
+
+  clientId        String?
+  client          Client?        @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  clientName      String         @default("")
+
+  date            DateTime       @default(now())
+  dueDate         DateTime?
+
+  subtotal        Float          @default(0)
+  taxRate         Float          @default(0)
+  taxAmount       Float          @default(0)
+  total           Float          @default(0)
+
+  // Additional pricing fields
+  laborPrice      Float          @default(0)
+  mandays         Json?          // JSON: { days, people, costPerDay } - revenue (shown to client)
+  realMandays     Json?          // JSON: { days, people, costPerDay } - actual cost (internal)
+  vatApplied      Boolean        @default(false)
+
+  notes           String         @default("")
+  status          DocumentStatus @default(DRAFT)
+
+  // Conversion tracking
+  convertedFrom   String?        // ID of proforma if this is converted invoice
+  convertedTo     String?        // ID of invoice if this proforma was converted
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  // Relations
+  items           DocumentItem[]
+  payments        Payment[]      // Only populated for invoices (enforced in app logic)
+
+  @@index([userId])
+  @@index([type])
+  @@index([documentNumber])
+  @@index([clientId])
+}
+
+// Document items (line items in documents)
+model DocumentItem {
+  id          String   @id @default(uuid())
+  documentId  String
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  stockId     String?
+  stock       Stock?   @relation(fields: [stockId], references: [id], onDelete: SetNull)
+
+  name        String
+  description String   @default("")
+  quantity    Float
+  unitPrice   Float
+  total       Float
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([documentId])
+  @@index([stockId])
+}
+
+// Payment model
+model Payment {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  documentId    String?
+  document      Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  clientId      String?
+  client        Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  clientName    String   @default("")
+  invoiceNumber String   @default("")
+  amount        Float
+  paymentDate   DateTime @default(now())
+  paymentMethod String   @default("") // cash, bank transfer, etc.
+  notes         String   @default("")
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId])
+  @@index([documentId])
+  @@index([clientId])
+}
+
+// Expense model
+model Expense {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  description String
+  category    String   @default("")
+  amount      Float
+  expenseDate DateTime @default(now())
+  notes       String   @default("")
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([category])
+}
+
+// Settings model (one per user)
+model Settings {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  companyName     String   @default("")
+  companyAddress  String   @default("")
+  companyPhone    String   @default("")
+  companyEmail    String   @default("")
+  companyVatNumber String  @default("")
+  logo            String   @default("") // Base64 or URL for company logo
+  footerMessage   String   @default("Thank you for your business!")
+  taxRate         Float    @default(0)
+  currency        String   @default("USD")
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// Counter model (for sequential IDs)
+model Counter {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type      String   // 'client', 'proforma', 'invoice', etc.
+  lastId    Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, type])
+  @@index([userId, type])
+}

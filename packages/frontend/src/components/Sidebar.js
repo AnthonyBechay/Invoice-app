@@ -1,0 +1,108 @@
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import { settingsAPI } from '../services/api';
+import { COMPANY_INFO } from '../config';
+
+const Sidebar = ({ navigateTo, currentPage, isOpen, setOpen }) => {
+    const [companyName, setCompanyName] = useState(COMPANY_INFO.name);
+    const { user, logout } = useAuth();
+
+    useEffect(() => {
+        const fetchCompanySettings = async () => {
+            try {
+                const settings = await settingsAPI.get();
+                if (settings && settings.companyName) {
+                    setCompanyName(settings.companyName);
+                }
+            } catch (error) {
+                console.error('Failed to fetch company settings:', error);
+            }
+        };
+
+        if (user) {
+            fetchCompanySettings();
+        }
+    }, [user]);
+
+    const handleLogout = () => {
+        logout();
+    };
+
+    const handleNavigate = (page) => {
+        navigateTo(page);
+        setOpen(false); // Close sidebar on navigation
+    };
+
+    const navItems = [
+        { name: 'Dashboard', page: 'dashboard' },
+        { name: 'Proformas', page: 'proformas' },
+        { name: 'Invoices', page: 'invoices' },
+        { name: 'Payments', page: 'payments' },
+        { name: 'Expenses', page: 'expenses' },
+        { name: 'Stock Items', page: 'stock' },
+        { name: 'Clients', page: 'clients' },
+        { name: 'Accounting', page: 'accounting' },
+        { name: 'Settings', page: 'settings' },
+    ];
+
+    const sidebarClasses = `
+        bg-gray-800 text-white w-64 absolute inset-y-0 left-0 transform
+        ${isOpen ? "translate-x-0" : "-translate-x-full"} md:relative md:translate-x-0
+        transition duration-200 ease-in-out z-20 flex flex-col shadow-lg md:sticky md:top-0 md:h-screen
+    `;
+
+    const userDisplayName = user?.name || user?.email?.split('@')[0] || 'User';
+    const userEmail = user?.email || '';
+    const userInitial = userDisplayName.charAt(0).toUpperCase();
+
+    return (
+        <div className={sidebarClasses}>
+            <div className="p-5 border-b border-gray-700">
+                <div className="text-2xl font-bold text-white">
+                    {companyName}
+                </div>
+                <div className="mt-2 flex items-center space-x-2">
+                    <div className="w-6 h-6 bg-indigo-500 rounded-full flex items-center justify-center flex-shrink-0">
+                        <span className="text-white font-semibold text-xs">
+                            {userInitial}
+                        </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-300 truncate">
+                            {userDisplayName}
+                        </p>
+                        <p className="text-xs text-gray-400 truncate">
+                            {userEmail}
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <nav className="flex-1 px-2 py-4 space-y-2 overflow-y-auto">
+                {navItems.map(item => (
+                    <button
+                        key={item.name}
+                        onClick={() => handleNavigate(item.page)}
+                        className={`w-full text-left flex items-center px-4 py-2 text-sm font-medium rounded-md transition-colors duration-200 ${
+                            currentPage === item.page ? 'bg-gray-900 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                        }`}
+                    >
+                        {item.name}
+                    </button>
+                ))}
+            </nav>
+
+            {/* Logout button - Fixed at bottom */}
+            <div className="p-4 border-t border-gray-700 mt-auto">
+                <button
+                    onClick={handleLogout}
+                    className="w-full text-left flex items-center px-4 py-2 text-sm font-medium rounded-md text-gray-300 hover:bg-red-600 hover:text-white transition-colors"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-3" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z" clipRule="evenodd" /></svg>
+                    Logout
+                </button>
+            </div>
+        </div>
+    );
+};
+
+export default Sidebar;

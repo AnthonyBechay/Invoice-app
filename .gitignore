@@ -64,6 +64,38 @@ node_modules/
 
 # dotenv environment variables file
 .env
+.env.local
+.env.production
 
 # dataconnect generated files
 .dataconnect
+
+# Monorepo specific
+.pnpm-store
+build
+dist
+.next
+out
+
+# Backend specific
+serviceAccountKey.json
+voltventures-*.json
+*-firebase-adminsdk-*.json
+
+# Migration/export files
+*.csv
+firebase-export/
+firebase-structure/
+documentdata.txt
+
+# OS files
+.DS_Store
+Thumbs.db
+nul
+NUL
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
