@@ -32,7 +32,11 @@ router.get('/', async (req, res, next) => {
       take: limitParam ? parseInt(limitParam) : undefined,
       orderBy: { createdAt: 'desc' },
       include: {
-        items: true,
+        items: {
+          include: {
+            stock: true
+          }
+        },
         client: true
       }
     });
@@ -105,7 +109,11 @@ router.get('/:id', async (req, res, next) => {
         userId
       },
       include: {
-        items: true,
+        items: {
+          include: {
+            stock: true
+          }
+        },
         client: true
       }
     });
@@ -150,7 +158,11 @@ router.post('/', async (req, res, next) => {
     const document = await prisma.document.create({
       data,
       include: {
-        items: true,
+        items: {
+          include: {
+            stock: true
+          }
+        },
         client: true
       }
     });
@@ -202,7 +214,11 @@ router.put('/:id', async (req, res, next) => {
       where: { id },
       data,
       include: {
-        items: true,
+        items: {
+          include: {
+            stock: true
+          }
+        },
         client: true
       }
     });
@@ -254,7 +270,11 @@ router.post('/:id/convert', async (req, res, next) => {
         userId
       },
       include: {
-        items: true
+        items: {
+          include: {
+            stock: true
+          }
+        }
       }
     });
 
@@ -333,7 +353,11 @@ router.post('/:id/convert', async (req, res, next) => {
     const invoice = await prisma.document.create({
       data: invoiceData,
       include: {
-        items: true,
+        items: {
+          include: {
+            stock: true
+          }
+        },
         client: true
       }
     });

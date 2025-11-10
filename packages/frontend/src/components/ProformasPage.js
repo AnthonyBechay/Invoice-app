@@ -39,12 +39,12 @@ const ProformasPage = ({ navigateTo }) => {
 
             allProformas.forEach((doc) => {
                 // Check if it's converted to invoice - exclude from all lists to avoid double counting
-                if (doc.converted || doc.convertedToInvoice || doc.transformedToInvoice) {
+                if (doc.status === 'CONVERTED' || doc.convertedTo) {
                     // Skip converted proformas from all lists
                     return;
                 }
 
-                if (doc.deleted === true || doc.cancelled === true) {
+                if (doc.deleted === true || doc.cancelled === true || doc.status === 'CANCELLED') {
                     deletedDocs.push(doc);
                 } else {
                     activeDocs.push(doc);

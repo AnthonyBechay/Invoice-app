@@ -224,12 +224,12 @@ const InvoicesPage = ({ navigateTo }) => {
                         const remainingUnallocated = payment.amount - amountToAllocate;
                         const newPaymentData = {
                             clientId: payment.clientId,
+                            clientName: payment.clientName || '',
                             amount: remainingUnallocated,
-                            settledToDocument: false,
                             documentId: null,
+                            invoiceNumber: '',
                             paymentDate: payment.paymentDate,
                             paymentMethod: payment.paymentMethod,
-                            reference: payment.reference,
                             notes: (payment.notes || '') + ` | Split from original payment`
                         };
                         await paymentsAPI.create(newPaymentData);
@@ -240,13 +240,13 @@ const InvoicesPage = ({ navigateTo }) => {
                 // Add new payment to the payments collection (allocated to this invoice)
                 const paymentData = {
                     clientId: selectedInvoice.client.id,
+                    clientName: selectedInvoice.clientName || selectedInvoice.client?.name || '',
                     documentId: selectedInvoice.id,
+                    invoiceNumber: selectedInvoice.documentNumber || '',
                     amount: amount,
                     paymentDate: new Date(paymentDate).toISOString(),
                     paymentMethod: paymentMethod,
-                    reference: paymentReference || `Invoice #${selectedInvoice.invoiceNumber}`,
-                    notes: paymentNote,
-                    settledToDocument: true // Payment is allocated to this invoice
+                    notes: paymentNote || ''
                 };
 
                 await paymentsAPI.create(paymentData);

@@ -488,14 +488,14 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
                         <tbody>
                             {items && items.map((item, index) => (
                                 <tr key={index} className="border-b">
-                                    <td className="py-1 px-2 text-xs">{item.partNumber}</td>
+                                    <td className="py-1 px-2 text-xs">{item.stock?.partNumber || ''}</td>
                                     <td className="py-1 px-2 text-xs">
                                         <div className="font-medium">{item.name}</div>
-                                        <div className="text-gray-600">{item.brand && `${item.brand} - `}{item.specs}</div>
+                                        <div className="text-gray-600">{item.description || ''}</div>
                                     </td>
-                                    <td className="py-1 px-2 text-center text-xs">{item.qty}</td>
-                                    <td className="py-1 px-2 text-right text-xs">${item.unitPrice.toFixed(2)}</td>
-                                    <td className="py-1 px-2 text-right font-medium text-xs">${(item.qty * item.unitPrice).toFixed(2)}</td>
+                                    <td className="py-1 px-2 text-center text-xs">{item.quantity || 0}</td>
+                                    <td className="py-1 px-2 text-right text-xs">${(item.unitPrice || 0).toFixed(2)}</td>
+                                    <td className="py-1 px-2 text-right font-medium text-xs">${((item.quantity || 0) * (item.unitPrice || 0)).toFixed(2)}</td>
                                 </tr>
                             ))}
                             {laborPrice > 0 && (
