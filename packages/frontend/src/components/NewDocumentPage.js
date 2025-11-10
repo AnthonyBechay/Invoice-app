@@ -147,18 +147,29 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
         setIsSubmitting(true);
 
         const clientData = clients.find(c => c.id === selectedClient);
+
+        // Clean items data - only send DocumentItem fields
+        const cleanedItems = lineItems.map(item => ({
+            stockId: item.id || item.itemId || null,
+            name: item.name,
+            description: item.description || '',
+            quantity: parseFloat(item.qty) || 0,
+            unitPrice: parseFloat(item.unitPrice) || 0,
+            total: (parseFloat(item.qty) || 0) * (parseFloat(item.unitPrice) || 0)
+        }));
+
         const documentData = {
             clientId: clientData.id,
             clientName: clientData.name,
             date: new Date(documentDate + 'T00:00:00').toISOString(),
-            items: lineItems,
+            items: cleanedItems,
             laborPrice: parseFloat(laborPrice || 0),
             mandays: showMandays ? mandays : null,
             realMandays: showRealMandays ? realMandays : null,
             notes,
-            vatApplied,
             subtotal,
-            vatAmount,
+            taxRate: vatApplied ? 0.11 : 0,
+            taxAmount: vatAmount,
             total,
             type: docType,
         };

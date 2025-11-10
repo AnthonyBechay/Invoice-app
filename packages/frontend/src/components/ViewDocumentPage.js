@@ -342,7 +342,9 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
         return <p>No document selected.</p>;
     }
 
-    const { type, documentNumber, clientName, date, items, laborPrice, mandays, notes, vatApplied, subtotal, vatAmount, total } = documentToView;
+    const { type, documentNumber, clientName, date, items, laborPrice, mandays, notes, vatApplied, subtotal, taxAmount, vatAmount, total } = documentToView;
+    // Use taxAmount (new field) or fall back to vatAmount (old field) for backward compatibility
+    const displayVatAmount = taxAmount || vatAmount || 0;
 
     // Parse client data - handle both old format (client object) and new format (clientName, etc.)
     const clientInfo = {
@@ -528,7 +530,7 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
                         {vatApplied && (
                         <div className="flex justify-between py-0.5 text-gray-600 text-xs">
                             <span>VAT (11%):</span>
-                            <span>${vatAmount.toFixed(2)}</span>
+                            <span>${displayVatAmount.toFixed(2)}</span>
                         </div>
                         )}
                         <div className="flex justify-between py-1 mt-1 border-t-2 border-gray-300">

@@ -158,7 +158,7 @@ const AccountingPage = () => {
 
             filteredDocs.forEach(doc => {
                 totalRevenue += doc.total || 0;
-                vatCollected += doc.vatAmount || 0;
+                vatCollected += doc.taxAmount || doc.vatAmount || 0;
                 laborRevenue += doc.laborPrice || 0;
 
                 // Display Mandays Revenue
@@ -204,7 +204,7 @@ const AccountingPage = () => {
                         docRealMandaysCost = realDays * realPeople * realCostPerDay;
                     }
 
-                    const docVatAmount = doc.vatAmount || 0;
+                    const docVatAmount = doc.taxAmount || doc.vatAmount || 0;
                     const docProfit = docItemsRevenue + docLaborRevenue + docDisplayMandaysRevenue - docItemsCost - docRealMandaysCost - docVatAmount;
                     const paymentRatio = paid / doc.total;
                     collectedProfit += docProfit * paymentRatio;
@@ -298,7 +298,7 @@ const AccountingPage = () => {
                 realMandaysCost = realDays * realPeople * realCostPerDay;
             }
 
-            const profit = doc.total - cost - (doc.vatAmount || 0) - realMandaysCost;
+            const profit = doc.total - cost - (doc.taxAmount || doc.vatAmount || 0) - realMandaysCost;
             const paid = doc.totalPaid || 0;
             const paymentRatio = paid / doc.total;
             const collectedProfit = profit * paymentRatio;
@@ -318,7 +318,7 @@ const AccountingPage = () => {
                 (doc.laborPrice || 0).toFixed(2),
                 displayMandaysRevenue.toFixed(2),
                 realMandaysCost.toFixed(2),
-                (doc.vatAmount || 0).toFixed(2),
+                (doc.taxAmount || doc.vatAmount || 0).toFixed(2),
                 doc.total.toFixed(2),
                 cost.toFixed(2),
                 profit.toFixed(2),
@@ -747,7 +747,7 @@ const AccountingPage = () => {
                                         realMandaysCost = realDays * realPeople * realCostPerDay;
                                     }
 
-                                    const profit = doc.total - cost - (doc.vatAmount || 0) - realMandaysCost;
+                                    const profit = doc.total - cost - (doc.taxAmount || doc.vatAmount || 0) - realMandaysCost;
                                     const daysSinceIssued = Math.floor((new Date() - new Date(doc.date)) / (1000 * 60 * 60 * 24));
                                     const totalPaid = doc.totalPaid || 0;
                                     const isPaid = totalPaid >= doc.total;
@@ -783,7 +783,7 @@ const AccountingPage = () => {
                                             <td className="py-4 px-6 text-right font-medium">${(doc.laborPrice || 0).toFixed(2)}</td>
                                             <td className="py-4 px-6 text-right font-medium text-green-600">${displayMandaysRevenue.toFixed(2)}</td>
                                             <td className="py-4 px-6 text-right font-medium text-red-600">${realMandaysCost.toFixed(2)}</td>
-                                            <td className="py-4 px-6 text-right font-medium">${(doc.vatAmount || 0).toFixed(2)}</td>
+                                            <td className="py-4 px-6 text-right font-medium">${(doc.taxAmount || doc.vatAmount || 0).toFixed(2)}</td>
                                             <td className="py-4 px-6 text-right font-bold text-lg">${doc.total.toFixed(2)}</td>
                                             <td className="py-4 px-6 text-right font-semibold">${totalPaid.toFixed(2)}</td>
                                             <td className={`py-4 px-6 text-right font-bold ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
