@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, query, onSnapshot, where, Timestamp, limit, orderBy } from 'firebase/firestore';
-import { auth, db } from '../firebase/config';
+import { documentsAPI, paymentsAPI } from '../services/api';
 import { CardSkeleton, ListItemSkeleton } from './LoadingSkeleton';
 
 const StatCard = ({ title, value, detail, color, isExpanded, onToggle }) => (
@@ -15,14 +14,14 @@ const StatCard = ({ title, value, detail, color, isExpanded, onToggle }) => (
                     </>
                 )}
             </div>
-            <button 
+            <button
                 onClick={onToggle}
                 className="ml-2 text-white hover:text-gray-200 transition-colors"
             >
-                <svg 
-                    className={`w-5 h-5 transform transition-transform ${isExpanded ? 'rotate-180' : ''}`} 
-                    fill="none" 
-                    stroke="currentColor" 
+                <svg
+                    className={`w-5 h-5 transform transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
                     viewBox="0 0 24 24"
                 >
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
@@ -40,15 +39,15 @@ const Dashboard = ({ navigateTo }) => {
         invoicesTotal: 0,
     });
     const [recentDocuments, setRecentDocuments] = useState([]);
-    const [pendingProformas, setPendingProformas] = useState([]); // For follow-up table
-    const [unpaidInvoices, setUnpaidInvoices] = useState([]); // For follow-up table
+    const [pendingProformas, setPendingProformas] = useState([]);
+    const [unpaidInvoices, setUnpaidInvoices] = useState([]);
     const [overdueInvoices, setOverdueInvoices] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [filterPeriod, setFilterPeriod] = useState('allTime'); // 'allTime', 'ytd', 'thisMonth' - Default to All Time
+    const [filterPeriod, setFilterPeriod] = useState('allTime');
     const [expandedCards, setExpandedCards] = useState({
-        proformas: false,  // Collapsed by default
-        invoices: false,   // Collapsed by default
-        revenue: false     // Collapsed by default
+        proformas: false,
+        invoices: false,
+        revenue: false
     });
 
     const toggleCard = (cardName) => {
@@ -62,7 +61,7 @@ const Dashboard = ({ navigateTo }) => {
         const now = new Date();
         const year = now.getFullYear();
         const month = now.getMonth();
-        
+
         switch (filterPeriod) {
             case 'thisMonth':
                 return {
@@ -83,35 +82,34 @@ const Dashboard = ({ navigateTo }) => {
         }
     };
 
-    // Memoize date range calculation
     const dateRange = useMemo(() => getDateRange(), [filterPeriod]);
 
     useEffect(() => {
-        if (!auth.currentUser) return;
-        
-        const q = query(
-            collection(db, `documents/${auth.currentUser.uid}/userDocuments`),
-            orderBy('date', 'desc'),
-            limit(100) // Limit initial load to 100 documents for better performance
-        );
-        const unsubscribe = onSnapshot(q, (querySnapshot) => {
-            const docs = [];
-            querySnapshot.forEach((doc) => {
-                const data = doc.data();
-                const docDate = data.date.toDate();
-                
-                // Filter by date range and exclude cancelled/deleted documents
-                if (docDate >= dateRange.start && docDate <= dateRange.end && 
-                    !data.cancelled && !data.deleted) {
-                    docs.push({ id: doc.id, ...data });
-                }
+        fetchData();
+    }, [filterPeriod, dateRange]);
+
+    const fetchData = async () => {
+        try {
+            setLoading(true);
+            const [allDocuments, allPayments] = await Promise.all([
+                documentsAPI.getAll(),
+                paymentsAPI.getAll()
+            ]);
+
+            // Filter by date range and exclude cancelled/deleted documents
+            const docs = allDocuments.filter(doc => {
+                const docDate = new Date(doc.date);
+                return docDate >= dateRange.start &&
+                       docDate <= dateRange.end &&
+                       doc.status !== 'cancelled' &&
+                       !doc.deleted;
             });
 
             // Filter active documents only (not converted proformas)
-            const proformas = docs.filter(d => d.type === 'proforma' && !d.converted);
+            const proformas = docs.filter(d => d.type === 'proforma' && !d.convertedTo);
             const invoices = docs.filter(d => d.type === 'invoice');
 
-            // Memoized calculations for totals
+            // Calculate totals
             const proformasTotal = proformas.reduce((sum, doc) => sum + (doc.total || 0), 0);
             const invoicesTotal = invoices.reduce((sum, doc) => sum + (doc.total || 0), 0);
 
@@ -122,44 +120,46 @@ const Dashboard = ({ navigateTo }) => {
                 invoicesTotal: invoicesTotal,
             });
 
-            // Set pending proformas for follow-up (prioritize older ones and unpaid)
-            const sortedProformas = proformas.sort((a, b) => {
-                // Prioritize unpaid, then by age
-                const aPaid = a.totalPaid || 0;
-                const bPaid = b.totalPaid || 0;
+            // Calculate total paid for each invoice using payments
+            const invoicesWithPayments = invoices.map(inv => {
+                const totalPaid = allPayments
+                    .filter(p => p.documentId === inv.id)
+                    .reduce((sum, p) => sum + p.amount, 0);
+                return { ...inv, totalPaid };
+            });
+
+            // Set pending proformas for follow-up
+            const sortedProformas = [...proformas].sort((a, b) => {
+                const aPaid = allPayments.filter(p => p.documentId === a.id).reduce((sum, p) => sum + p.amount, 0);
+                const bPaid = allPayments.filter(p => p.documentId === b.id).reduce((sum, p) => sum + p.amount, 0);
                 if (aPaid === 0 && bPaid > 0) return -1;
                 if (aPaid > 0 && bPaid === 0) return 1;
-                return a.date.toDate() - b.date.toDate();
+                return new Date(a.date) - new Date(b.date);
             });
-            setPendingProformas(sortedProformas.slice(0, 5)); // Show top 5
-            
+            setPendingProformas(sortedProformas.slice(0, 5));
+
             // Set unpaid invoices for follow-up
-            const unpaid = invoices.filter(inv => {
-                const totalPaid = inv.totalPaid || 0;
-                return totalPaid < inv.total;
-            });
-            
+            const unpaid = invoicesWithPayments.filter(inv => inv.totalPaid < inv.total);
+
             // Separate overdue invoices (30+ days old and unpaid)
             const thirtyDaysAgo = new Date();
             thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-            
-            const overdue = unpaid.filter(inv => inv.date.toDate() < thirtyDaysAgo);
-            const recentUnpaid = unpaid.filter(inv => inv.date.toDate() >= thirtyDaysAgo);
-            
+
+            const overdue = unpaid.filter(inv => new Date(inv.date) < thirtyDaysAgo);
+            const recentUnpaid = unpaid.filter(inv => new Date(inv.date) >= thirtyDaysAgo);
+
             setUnpaidInvoices(recentUnpaid.slice(0, 5));
             setOverdueInvoices(overdue.slice(0, 5));
 
-            docs.sort((a, b) => b.date.toDate() - a.date.toDate());
+            docs.sort((a, b) => new Date(b.date) - new Date(a.date));
             setRecentDocuments(docs.slice(0, 5));
 
             setLoading(false);
-        }, (error) => {
-            console.error("Error fetching documents: ", error);
+        } catch (error) {
+            console.error("Error fetching dashboard data:", error);
             setLoading(false);
-        });
-
-        return () => unsubscribe();
-    }, [filterPeriod, dateRange]);
+        }
+    };
 
     if (loading) {
         return (
@@ -190,8 +190,8 @@ const Dashboard = ({ navigateTo }) => {
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
                 <h1 className="text-3xl font-bold text-gray-800">Dashboard</h1>
                 <div className="flex flex-wrap gap-2">
-                    <select 
-                        value={filterPeriod} 
+                    <select
+                        value={filterPeriod}
                         onChange={(e) => setFilterPeriod(e.target.value)}
                         className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     >
@@ -236,7 +236,7 @@ const Dashboard = ({ navigateTo }) => {
             {/* Follow-Up Summary */}
             <div className="bg-white p-6 rounded-lg shadow-lg mb-8">
                 <h2 className="text-xl font-semibold text-gray-700 mb-4">Follow-Up Required</h2>
-                
+
                 {/* Critical Overdue Section */}
                 {overdueInvoices.length > 0 && (
                     <div className="mb-6 p-4 bg-red-50 rounded-lg border border-red-200">
@@ -248,17 +248,17 @@ const Dashboard = ({ navigateTo }) => {
                         </h3>
                         <div className="space-y-2">
                             {overdueInvoices.map(doc => {
-                                const daysOld = Math.floor((new Date() - doc.date.toDate()) / (1000 * 60 * 60 * 24));
+                                const daysOld = Math.floor((new Date() - new Date(doc.date)) / (1000 * 60 * 60 * 24));
                                 const remaining = doc.total - (doc.totalPaid || 0);
                                 return (
-                                    <div 
-                                        key={doc.id} 
+                                    <div
+                                        key={doc.id}
                                         onClick={() => navigateTo('viewDocument', doc)}
                                         className="p-3 bg-white border border-red-300 rounded hover:bg-red-50 cursor-pointer"
                                     >
                                         <div className="flex justify-between items-start">
                                             <div>
-                                                <span className="font-medium text-sm">{doc.client.name}</span>
+                                                <span className="font-medium text-sm">{doc.clientName || 'Unknown Client'}</span>
                                                 <span className="text-xs text-gray-500 ml-2">{doc.documentNumber}</span>
                                             </div>
                                             <div className="text-right">
@@ -274,7 +274,7 @@ const Dashboard = ({ navigateTo }) => {
                         </div>
                     </div>
                 )}
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* Pending Proformas */}
                     <div>
@@ -284,18 +284,18 @@ const Dashboard = ({ navigateTo }) => {
                         ) : (
                             <div className="space-y-2">
                                 {pendingProformas.map(doc => {
-                                    const daysOld = Math.floor((new Date() - doc.date.toDate()) / (1000 * 60 * 60 * 24));
+                                    const daysOld = Math.floor((new Date() - new Date(doc.date)) / (1000 * 60 * 60 * 24));
                                     const totalPaid = doc.totalPaid || 0;
                                     const remaining = doc.total - totalPaid;
-                                    
+
                                     return (
-                                        <div 
-                                            key={doc.id} 
+                                        <div
+                                            key={doc.id}
                                             onClick={() => navigateTo('viewDocument', doc)}
                                             className="p-2 border rounded hover:bg-gray-50 cursor-pointer flex justify-between items-center"
                                         >
                                             <div>
-                                                <span className="font-medium text-sm">{doc.client.name}</span>
+                                                <span className="font-medium text-sm">{doc.clientName || 'Unknown Client'}</span>
                                                 <span className="text-xs text-gray-500 ml-2">{doc.documentNumber}</span>
                                                 {totalPaid > 0 && (
                                                     <span className="text-xs bg-yellow-100 text-yellow-800 px-1 py-0.5 rounded ml-1">
@@ -317,7 +317,7 @@ const Dashboard = ({ navigateTo }) => {
                             </div>
                         )}
                     </div>
-                    
+
                     {/* Recent Unpaid Invoices */}
                     <div>
                         <h3 className="text-lg font-medium text-gray-600 mb-2">Recent Unpaid Invoices</h3>
@@ -326,18 +326,18 @@ const Dashboard = ({ navigateTo }) => {
                         ) : (
                             <div className="space-y-2">
                                 {unpaidInvoices.map(doc => {
-                                    const daysOld = Math.floor((new Date() - doc.date.toDate()) / (1000 * 60 * 60 * 24));
+                                    const daysOld = Math.floor((new Date() - new Date(doc.date)) / (1000 * 60 * 60 * 24));
                                     const totalPaid = doc.totalPaid || 0;
                                     const remaining = doc.total - totalPaid;
-                                    
+
                                     return (
-                                        <div 
-                                            key={doc.id} 
+                                        <div
+                                            key={doc.id}
                                             onClick={() => navigateTo('viewDocument', doc)}
                                             className="p-2 border rounded hover:bg-gray-50 cursor-pointer flex justify-between items-center"
                                         >
                                             <div>
-                                                <span className="font-medium text-sm">{doc.client.name}</span>
+                                                <span className="font-medium text-sm">{doc.clientName || 'Unknown Client'}</span>
                                                 <span className="text-xs text-gray-500 ml-2">{doc.documentNumber}</span>
                                                 {totalPaid > 0 && (
                                                     <span className="text-xs bg-green-100 text-green-800 px-1 py-0.5 rounded ml-1">
@@ -388,8 +388,8 @@ const Dashboard = ({ navigateTo }) => {
                                             </span>
                                         </td>
                                         <td className="py-3 px-6 text-left">{doc.documentNumber}</td>
-                                        <td className="py-3 px-6 text-left">{doc.client.name}</td>
-                                        <td className="py-3 px-6 text-center">{doc.date.toDate().toLocaleDateString()}</td>
+                                        <td className="py-3 px-6 text-left">{doc.clientName || 'Unknown Client'}</td>
+                                        <td className="py-3 px-6 text-center">{new Date(doc.date).toLocaleDateString()}</td>
                                         <td className="py-3 px-6 text-right font-semibold">${doc.total.toFixed(2)}</td>
                                     </tr>
                                 ))}

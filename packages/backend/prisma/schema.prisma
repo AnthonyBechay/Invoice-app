@@ -187,19 +187,22 @@ model Expense {
 
 // Settings model (one per user)
 model Settings {
-  id             String   @id @default(uuid())
-  userId         String   @unique
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  companyName    String   @default("")
-  companyAddress String   @default("")
-  companyPhone   String   @default("")
-  companyEmail   String   @default("")
-  taxRate        Float    @default(0)
-  currency       String   @default("USD")
+  companyName     String   @default("")
+  companyAddress  String   @default("")
+  companyPhone    String   @default("")
+  companyEmail    String   @default("")
+  companyVatNumber String  @default("")
+  logo            String   @default("") // Base64 or URL for company logo
+  footerMessage   String   @default("Thank you for your business!")
+  taxRate         Float    @default(0)
+  currency        String   @default("USD")
 
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@index([userId])
 }

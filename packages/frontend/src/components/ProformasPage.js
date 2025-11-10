@@ -21,127 +21,57 @@ const ProformasPage = ({ navigateTo }) => {
     const [confirmDelete, setConfirmDelete] = useState(null);
     const [convertingIds, setConvertingIds] = useState(new Set()); // Track converting proformas
 
-    useEffect(() => {
-        console.log("ProformasPage: useEffect running");
-        
-        // Use auth state listener to wait for auth to be ready
-        const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
-            console.log("ProformasPage: Auth state changed, user:", currentUser?.uid || "null");
-            
-            if (!currentUser) {
-                console.log("ProformasPage: No authenticated user");
-                setLoading(false);
-                return;
-            }
-            
-            console.log("ProformasPage: Fetching proformas for user:", currentUser.uid);
-            
-            // NOTE: Composite index removed - fetch all proformas and sort client-side
-            const proformaQuery = query(
-                collection(db, `documents/${currentUser.uid}/userDocuments`),
-                where('type', '==', 'proforma')
-            );
-            
-            const unsubscribe = onSnapshot(proformaQuery, (querySnapshot) => {
-                console.log("ProformasPage: Received snapshot with", querySnapshot.size, "documents");
-                const activeDocs = [];
-                const deletedDocs = [];
-                
-                querySnapshot.forEach((doc) => {
-                    const data = { id: doc.id, ...doc.data() };
-                    
-                    // Check if it's converted to invoice - exclude from all lists to avoid double counting
-                    if (data.converted || data.convertedToInvoice || data.transformedToInvoice) {
-                        // Skip converted proformas from all lists
-                        return;
-                    }
-                    
-                    if (data.deleted === true || data.cancelled === true) {
-                        deletedDocs.push(data);
-                    } else {
-                        activeDocs.push(data);
-                    }
-                });
-                
-                activeDocs.sort((a, b) => {
-                    const dateA = a.date?.toDate ? a.date.toDate() : new Date(a.date);
-                    const dateB = b.date?.toDate ? b.date.toDate() : new Date(b.date);
-                    return dateB - dateA;
-                });
-                deletedDocs.sort((a, b) => {
-                    const dateA = a.deletedAt?.toDate ? a.deletedAt.toDate() : new Date();
-                    const dateB = b.deletedAt?.toDate ? b.deletedAt.toDate() : new Date();
-                    return dateB - dateA;
-                });
-                
-                console.log("ProformasPage: Setting proformas - active:", activeDocs.length, "deleted:", deletedDocs.length);
-                setProformas(activeDocs);
-                setDeletedProformas(deletedDocs);
-                setLoading(false);
-            }, (error) => {
-                console.error("ProformasPage: Error fetching proformas: ", error);
-                console.error("ProformasPage: Error code:", error.code);
-                console.error("ProformasPage: Error message:", error.message);
-                
-                // If index error, try without orderBy
-                if (error.code === 'failed-precondition' || error.message?.includes('index')) {
-                    console.log("ProformasPage: Index missing, trying query without orderBy");
-                    const fallbackQuery = query(
-                        collection(db, `documents/${currentUser.uid}/userDocuments`),
-                        where('type', '==', 'proforma'),
-                        limit(50)
-                    );
-                    const fallbackUnsubscribe = onSnapshot(fallbackQuery, (querySnapshot) => {
-                        console.log("ProformasPage: Fallback query received", querySnapshot.size, "documents");
-                        const activeDocs = [];
-                        const deletedDocs = [];
-                        
-                        querySnapshot.forEach((doc) => {
-                            const data = { id: doc.id, ...doc.data() };
-                            
-                            if (data.converted || data.convertedToInvoice || data.transformedToInvoice) {
-                                return;
-                            }
-                            
-                            if (data.deleted === true || data.cancelled === true) {
-                                deletedDocs.push(data);
-                            } else {
-                                activeDocs.push(data);
-                            }
-                        });
-                        
-                        activeDocs.sort((a, b) => {
-                            const dateA = a.date?.toDate ? a.date.toDate() : new Date(a.date);
-                            const dateB = b.date?.toDate ? b.date.toDate() : new Date(b.date);
-                            return dateB - dateA;
-                        });
-                        deletedDocs.sort((a, b) => {
-                            const dateA = a.deletedAt?.toDate ? a.deletedAt.toDate() : new Date();
-                            const dateB = b.deletedAt?.toDate ? b.deletedAt.toDate() : new Date();
-                            return dateB - dateA;
-                        });
-                        
-                        console.log("ProformasPage: Setting proformas (fallback) - active:", activeDocs.length, "deleted:", deletedDocs.length);
-                        setProformas(activeDocs);
-                        setDeletedProformas(deletedDocs);
-                        setLoading(false);
-                    }, (fallbackError) => {
-                        console.error("ProformasPage: Fallback query also failed:", fallbackError);
-                        setLoading(false);
-                    });
-                    return () => fallbackUnsubscribe();
+    const fetchProformas = async () => {
+        console.log("ProformasPage: Fetching proformas");
+        setLoading(true);
+
+        try {
+            // Fetch all proformas (both active and deleted)
+            const allProformas = await documentsAPI.getAll('proforma');
+            console.log("ProformasPage: Received", allProformas.length, "documents");
+
+            const activeDocs = [];
+            const deletedDocs = [];
+
+            allProformas.forEach((doc) => {
+                // Check if it's converted to invoice - exclude from all lists to avoid double counting
+                if (doc.converted || doc.convertedToInvoice || doc.transformedToInvoice) {
+                    // Skip converted proformas from all lists
+                    return;
                 }
-                setLoading(false);
+
+                if (doc.deleted === true || doc.cancelled === true) {
+                    deletedDocs.push(doc);
+                } else {
+                    activeDocs.push(doc);
+                }
             });
 
-            return () => {
-                unsubscribe();
-            };
-        });
-        
-        return () => {
-            unsubscribeAuth();
-        };
+            // Sort by date descending
+            activeDocs.sort((a, b) => {
+                const dateA = new Date(a.date);
+                const dateB = new Date(b.date);
+                return dateB - dateA;
+            });
+            deletedDocs.sort((a, b) => {
+                const dateA = a.deletedAt ? new Date(a.deletedAt) : new Date();
+                const dateB = b.deletedAt ? new Date(b.deletedAt) : new Date();
+                return dateB - dateA;
+            });
+
+            console.log("ProformasPage: Setting proformas - active:", activeDocs.length, "deleted:", deletedDocs.length);
+            setProformas(activeDocs);
+            setDeletedProformas(deletedDocs);
+        } catch (error) {
+            console.error("ProformasPage: Error fetching proformas:", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        console.log("ProformasPage: useEffect running");
+        fetchProformas();
     }, []);
 
 

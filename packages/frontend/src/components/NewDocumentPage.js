@@ -1,29 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { collection, query, getDocs, addDoc, updateDoc, doc, runTransaction } from 'firebase/firestore';
-import { auth, db } from '../firebase/config';
-
-// Helper to get next document number
-const getNextDocNumber = async (userId, type) => {
-    const year = new Date().getFullYear();
-    const counterRef = doc(db, `counters/${userId}/documentCounters`, `${type}Counter`);
-    const prefix = type === 'invoice' ? 'INV' : 'PRO';
-
-    try {
-        const newId = await runTransaction(db, async (transaction) => {
-            const counterDoc = await transaction.get(counterRef);
-            let newLastId = 1;
-            if (counterDoc.exists()) {
-                newLastId = counterDoc.data().lastId + 1;
-            }
-            transaction.set(counterRef, { lastId: newLastId }, { merge: true });
-            return newLastId;
-        });
-        return `${prefix}-${year}-${String(newId).padStart(3, '0')}`;
-    } catch (e) {
-        console.error("Failed to get next document number:", e);
-        throw e;
-    }
-};
+import { clientsAPI, stockAPI, documentsAPI } from '../services/api';
 
 const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
     const [docType, setDocType] = useState('proforma');
@@ -46,20 +22,22 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
     const [notes, setNotes] = useState('');
     const [vatApplied, setVatApplied] = useState(false);
     const [documentNumber, setDocumentNumber] = useState('');
-    const [documentDate, setDocumentDate] = useState(new Date().toISOString().split('T')[0]); // Add editable date
+    const [documentDate, setDocumentDate] = useState(new Date().toISOString().split('T')[0]);
     const [pageTitle, setPageTitle] = useState('Create New Document');
-    const [mode, setMode] = useState('create'); // 'create', 'edit'
-    const [isSubmitting, setIsSubmitting] = useState(false); // Prevent double submission
+    const [mode, setMode] = useState('create');
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const fetchInitialData = useCallback(async () => {
-        if (!auth.currentUser) return;
-        const clientQuery = query(collection(db, `clients/${auth.currentUser.uid}/userClients`));
-        const clientSnapshot = await getDocs(clientQuery);
-        setClients(clientSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-
-        const itemQuery = query(collection(db, `items/${auth.currentUser.uid}/userItems`));
-        const itemSnapshot = await getDocs(itemQuery);
-        setStockItems(itemSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        try {
+            const [clientsData, stockData] = await Promise.all([
+                clientsAPI.getAll(),
+                stockAPI.getAll()
+            ]);
+            setClients(clientsData);
+            setStockItems(stockData);
+        } catch (error) {
+            console.error("Error fetching initial data:", error);
+        }
     }, []);
 
     useEffect(() => {
@@ -69,24 +47,21 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
             setMode('edit');
             setPageTitle(`Edit ${documentToEdit.type === 'proforma' ? 'Proforma' : 'Invoice'}`);
             setDocType(documentToEdit.type);
-            setSelectedClient(documentToEdit.client.id);
-            setClientSearch(documentToEdit.client.name);
+            setSelectedClient(documentToEdit.clientId);
+            setClientSearch(documentToEdit.clientName);
             setLineItems(documentToEdit.items || []);
             setLaborPrice(documentToEdit.laborPrice || 0);
             setNotes(documentToEdit.notes || '');
             setVatApplied(documentToEdit.vatApplied || false);
             setDocumentNumber(documentToEdit.documentNumber);
-            // Load date if exists
             if (documentToEdit.date) {
-                const existingDate = documentToEdit.date.toDate();
+                const existingDate = new Date(documentToEdit.date);
                 setDocumentDate(existingDate.toISOString().split('T')[0]);
             }
-            // Load mandays if exists
             if (documentToEdit.mandays) {
                 setMandays(documentToEdit.mandays);
                 setShowMandays(true);
             }
-            // Load real mandays if exists
             if (documentToEdit.realMandays) {
                 setRealMandays(documentToEdit.realMandays);
                 setShowRealMandays(true);
@@ -95,7 +70,9 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
             setMode('create');
             setPageTitle('Create New Document');
             setDocType('proforma');
-            getNextDocNumber(auth.currentUser.uid, 'proforma').then(setDocumentNumber);
+            documentsAPI.getNextNumber('proforma')
+                .then(data => setDocumentNumber(data.documentNumber))
+                .catch(err => console.error("Error getting document number:", err));
         }
     }, [documentToEdit, fetchInitialData]);
 
@@ -161,9 +138,7 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
             setTimeout(() => modal.classList.add('hidden'), 3000);
             return;
         }
-        if (!auth.currentUser) return;
 
-        // Prevent double submission
         if (isSubmitting) {
             console.log('Document submission already in progress, ignoring duplicate request');
             return;
@@ -173,8 +148,9 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
 
         const clientData = clients.find(c => c.id === selectedClient);
         const documentData = {
-            client: clientData,
-            date: new Date(documentDate + 'T00:00:00'), // Use selected date
+            clientId: clientData.id,
+            clientName: clientData.name,
+            date: new Date(documentDate + 'T00:00:00').toISOString(),
             items: lineItems,
             laborPrice: parseFloat(laborPrice || 0),
             mandays: showMandays ? mandays : null,
@@ -184,20 +160,20 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
             subtotal,
             vatAmount,
             total,
+            type: docType,
         };
 
         try {
             if (mode === 'edit') {
-                const docRef = doc(db, `documents/${auth.currentUser.uid}/userDocuments`, documentToEdit.id);
-                await updateDoc(docRef, { ...documentData, type: docType, documentNumber });
+                await documentsAPI.update(documentToEdit.id, { ...documentData, documentNumber });
                 navigateTo(docType === 'invoice' ? 'invoices' : 'proformas');
-            } else { // create
-                const newDocNumber = await getNextDocNumber(auth.currentUser.uid, docType);
-                await addDoc(collection(db, `documents/${auth.currentUser.uid}/userDocuments`), { ...documentData, type: docType, documentNumber: newDocNumber });
+            } else {
+                const newDocData = await documentsAPI.getNextNumber(docType);
+                await documentsAPI.create({ ...documentData, documentNumber: newDocData.documentNumber });
                 navigateTo(docType === 'invoice' ? 'invoices' : 'proformas');
             }
         } catch (error) {
-            console.error("Error saving document: ", error);
+            console.error("Error saving document:", error);
             alert('Error saving document. Please try again.');
             setIsSubmitting(false);
         }
@@ -312,19 +288,19 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
                                         <div className="text-xs text-gray-600">{item.brand && `${item.brand} - `}{item.specs}</div>
                                     </td>
                                     <td className="py-2 px-2 sm:px-4">
-                                        <input 
-                                            type="number" 
-                                            value={item.qty} 
-                                            onChange={(e) => handleLineItemChange(index, 'qty', e.target.value)} 
-                                            className="w-16 sm:w-20 p-1 border rounded-md text-xs sm:text-sm" 
+                                        <input
+                                            type="number"
+                                            value={item.qty}
+                                            onChange={(e) => handleLineItemChange(index, 'qty', e.target.value)}
+                                            className="w-16 sm:w-20 p-1 border rounded-md text-xs sm:text-sm"
                                         />
                                     </td>
                                     <td className="py-2 px-2 sm:px-4">
-                                        <input 
-                                            type="number" 
-                                            value={item.unitPrice} 
-                                            onChange={(e) => handleLineItemChange(index, 'unitPrice', e.target.value)} 
-                                            className="w-20 sm:w-24 p-1 border rounded-md text-xs sm:text-sm" 
+                                        <input
+                                            type="number"
+                                            value={item.unitPrice}
+                                            onChange={(e) => handleLineItemChange(index, 'unitPrice', e.target.value)}
+                                            className="w-20 sm:w-24 p-1 border rounded-md text-xs sm:text-sm"
                                         />
                                     </td>
                                     <td className="py-2 px-2 sm:px-4 text-gray-400 buying-price-col text-xs sm:text-sm">${(item.buyingPrice || 0).toFixed(2)}</td>
@@ -372,9 +348,9 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
                                             {item.type && `Type: ${item.type} | `}
                                             {item.color && (
                                                 <span>
-                                                    Color: <span className="inline-block px-2 py-0.5 rounded" 
+                                                    Color: <span className="inline-block px-2 py-0.5 rounded"
                                                         style={{
-                                                            backgroundColor: item.color.toLowerCase() === 'white' ? '#f3f4f6' : 
+                                                            backgroundColor: item.color.toLowerCase() === 'white' ? '#f3f4f6' :
                                                                            item.color.toLowerCase() === 'black' ? '#1f2937' :
                                                                            item.color.toLowerCase() === 'red' ? '#ef4444' :
                                                                            item.color.toLowerCase() === 'blue' ? '#3b82f6' :
@@ -382,12 +358,12 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
                                                                            item.color.toLowerCase() === 'yellow' ? '#f59e0b' :
                                                                            item.color.toLowerCase() === 'gray' || item.color.toLowerCase() === 'grey' ? '#6b7280' :
                                                                            '#e5e7eb',
-                                                            color: item.color.toLowerCase() === 'white' || 
+                                                            color: item.color.toLowerCase() === 'white' ||
                                                                   item.color.toLowerCase() === 'yellow' ? '#1f2937' : '#ffffff',
                                                             fontSize: '11px'
                                                         }}>
                                                         {item.color}
-                                                    </span> | 
+                                                    </span> |
                                                 </span>
                                             )}
                                             {item.partNumber && `Part #: ${item.partNumber} | `}
@@ -561,19 +537,19 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
                 </div>
 
                 <div className="mt-6 sm:mt-10 flex flex-col sm:flex-row justify-end gap-3 sm:gap-4 no-print">
-                    <button 
+                    <button
                         onClick={() => {
                             if (documentToEdit) {
                                 navigateTo(documentToEdit.type === 'invoice' ? 'invoices' : 'proformas');
                             } else {
                                 navigateTo(docType === 'invoice' ? 'invoices' : 'proformas');
                             }
-                        }} 
+                        }}
                         className="w-full sm:w-auto bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 sm:py-3 px-4 sm:px-6 rounded-lg transition-colors text-sm sm:text-base"
                     >
                         Cancel
                     </button>
-                    <button 
+                    <button
                         onClick={handleSaveDocument}
                         disabled={isSubmitting}
                         className="w-full sm:w-auto bg-green-500 hover:bg-green-600 text-white font-bold py-2 sm:py-3 px-4 sm:px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"

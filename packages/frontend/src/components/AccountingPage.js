@@ -1,20 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, onSnapshot, where, Timestamp } from 'firebase/firestore';
-import { auth, db } from '../firebase/config';
+import { documentsAPI, paymentsAPI } from '../services/api';
 
 const AccountingPage = () => {
     const [documents, setDocuments] = useState([]);
+    const [payments, setPayments] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [filterPeriod, setFilterPeriod] = useState('allTime'); // 'allTime', 'ytd', 'thisMonth', 'lastMonth', 'custom'
+    const [filterPeriod, setFilterPeriod] = useState('allTime');
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
-    const [categoryFilter, setCategoryFilter] = useState('all'); // 'all', 'labor', 'items'
-    const [clientFilter, setClientFilter] = useState('all'); // 'all' or client id
-    const [statusFilter, setStatusFilter] = useState('unpaid'); // 'all', 'paid', 'unpaid', 'overdue'
-    const [documentTypeFilter, setDocumentTypeFilter] = useState('invoice'); // 'all', 'invoice', 'proforma' - Default to 'invoice'
- // 'include', 'exclude', 'only'
-    const [sortColumn, setSortColumn] = useState('date'); // Column to sort by
-    const [sortDirection, setSortDirection] = useState('desc'); // 'asc' or 'desc'
+    const [categoryFilter, setCategoryFilter] = useState('all');
+    const [clientFilter, setClientFilter] = useState('all');
+    const [statusFilter, setStatusFilter] = useState('unpaid');
+    const [documentTypeFilter, setDocumentTypeFilter] = useState('invoice');
+    const [sortColumn, setSortColumn] = useState('date');
+    const [sortDirection, setSortDirection] = useState('desc');
     const [uniqueClients, setUniqueClients] = useState([]);
     const [stats, setStats] = useState({
         totalRevenue: 0,
@@ -37,7 +36,7 @@ const AccountingPage = () => {
         const now = new Date();
         const year = now.getFullYear();
         const month = now.getMonth();
-        
+
         switch (filterPeriod) {
             case 'thisMonth':
                 return {
@@ -62,68 +61,68 @@ const AccountingPage = () => {
             case 'allTime':
             default:
                 return {
-                    start: new Date(2020, 0, 1), // Assuming business started after 2020
+                    start: new Date(2020, 0, 1),
                     end: now
                 };
         }
     };
 
     useEffect(() => {
-        if (!auth.currentUser) return;
+        fetchData();
+    }, [filterPeriod, customStartDate, customEndDate, documentTypeFilter, categoryFilter, clientFilter, statusFilter]);
 
-        const dateRange = getDateRange();
-        const startTimestamp = Timestamp.fromDate(dateRange.start);
-        const endTimestamp = Timestamp.fromDate(dateRange.end);
+    const fetchData = async () => {
+        try {
+            setLoading(true);
+            const [allDocuments, allPayments] = await Promise.all([
+                documentsAPI.getAll(),
+                paymentsAPI.getAll()
+            ]);
 
-        // Query for both invoices and proformas
-        let q = query(
-            collection(db, `documents/${auth.currentUser.uid}/userDocuments`)
-        );
+            const dateRange = getDateRange();
 
-        const unsubscribe = onSnapshot(q, (querySnapshot) => {
-            const docs = [];
-            querySnapshot.forEach((doc) => {
-                const data = doc.data();
-                const docDate = data.date.toDate();
-                
-                // Filter by date range and exclude cancelled documents
-                // Also exclude proformas that have been converted to invoices to avoid double counting
-                if (docDate >= dateRange.start && docDate <= dateRange.end && 
-                    !data.cancelled && 
-                    !data.deleted && 
-                    !data.transformedToInvoice && 
-                    !data.convertedToInvoice &&
-                    !data.converted) { // Exclude converted proformas
-                    docs.push({ id: doc.id, ...data });
-                }
+            // Filter documents by date range and exclude cancelled/converted
+            const docs = allDocuments.filter(doc => {
+                const docDate = new Date(doc.date);
+                return docDate >= dateRange.start &&
+                       docDate <= dateRange.end &&
+                       doc.status !== 'cancelled' &&
+                       !doc.deleted &&
+                       !doc.transformedTo &&
+                       !doc.convertedTo;
             });
 
-            // Apply filters to get filtered documents
-            let filteredDocs = docs;
-            
-        // Apply document type filter
-        if (documentTypeFilter === 'invoice') {
-            filteredDocs = filteredDocs.filter(doc => doc.type === 'invoice');
-        } else if (documentTypeFilter === 'proforma') {
-            filteredDocs = filteredDocs.filter(doc => doc.type === 'proforma');
-        }
-        
-        // Converted proformas are always excluded (no filter needed)
-        // This is handled in the initial document fetching above
-            
-            // Apply category filter
+            // Calculate total paid for each document from payments
+            const docsWithPayments = docs.map(doc => {
+                const totalPaid = allPayments
+                    .filter(p => p.documentId === doc.id)
+                    .reduce((sum, p) => sum + p.amount, 0);
+                return { ...doc, totalPaid };
+            });
+
+            // Apply filters
+            let filteredDocs = docsWithPayments;
+
+            // Document type filter
+            if (documentTypeFilter === 'invoice') {
+                filteredDocs = filteredDocs.filter(doc => doc.type === 'invoice');
+            } else if (documentTypeFilter === 'proforma') {
+                filteredDocs = filteredDocs.filter(doc => doc.type === 'proforma');
+            }
+
+            // Category filter
             if (categoryFilter === 'labor') {
                 filteredDocs = filteredDocs.filter(doc => doc.laborPrice && doc.laborPrice > 0);
             } else if (categoryFilter === 'items') {
                 filteredDocs = filteredDocs.filter(doc => doc.items && doc.items.length > 0);
             }
-            
-            // Apply client filter
+
+            // Client filter
             if (clientFilter !== 'all') {
-                filteredDocs = filteredDocs.filter(doc => doc.client.id === clientFilter);
+                filteredDocs = filteredDocs.filter(doc => doc.clientId === clientFilter);
             }
-            
-            // Apply status filter based on payment tracking
+
+            // Status filter
             if (statusFilter === 'paid') {
                 filteredDocs = filteredDocs.filter(doc => {
                     const totalPaid = doc.totalPaid || 0;
@@ -139,12 +138,11 @@ const AccountingPage = () => {
                 thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
                 filteredDocs = filteredDocs.filter(doc => {
                     const totalPaid = doc.totalPaid || 0;
-                    // Only invoices can be overdue, not proformas
-                    return doc.type === 'invoice' && totalPaid < doc.total && doc.date.toDate() < thirtyDaysAgo;
+                    return doc.type === 'invoice' && totalPaid < doc.total && new Date(doc.date) < thirtyDaysAgo;
                 });
             }
 
-            // Calculate statistics on filtered data
+            // Calculate statistics
             let totalRevenue = 0;
             let totalCost = 0;
             let laborRevenue = 0;
@@ -154,7 +152,7 @@ const AccountingPage = () => {
             let vatCollected = 0;
             let totalPaid = 0;
             let collectedProfit = 0;
-            
+
             const thirtyDaysAgo = new Date();
             thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
@@ -162,36 +160,34 @@ const AccountingPage = () => {
                 totalRevenue += doc.total || 0;
                 vatCollected += doc.vatAmount || 0;
                 laborRevenue += doc.laborPrice || 0;
-                
-                // Handle Display Mandays (shown to client, pure profit for you)
+
+                // Display Mandays Revenue
                 if (doc.mandays && doc.mandays.days > 0) {
                     const displayDays = doc.mandays.days || 0;
                     const displayPeople = doc.mandays.people || 0;
                     const displayCostPerDay = doc.mandays.costPerDay || 0;
                     displayMandaysRevenue += (displayDays * displayPeople * displayCostPerDay);
                 }
-                
-                // Handle Real Mandays Cost (hidden from client, actual cost to you)
+
+                // Real Mandays Cost
                 if (doc.realMandays && doc.realMandays.days > 0) {
                     const realDays = doc.realMandays.days || 0;
                     const realPeople = doc.realMandays.people || 0;
                     const realCostPerDay = doc.realMandays.costPerDay || 0;
                     const realCost = realDays * realPeople * realCostPerDay;
                     realMandaysCost += realCost;
-                    console.log('Real Mandays Cost:', { realDays, realPeople, realCostPerDay, realCost, totalRealCost: realMandaysCost });
                 }
-                
+
                 // Calculate payment status and collected profit
                 const paid = doc.totalPaid || 0;
                 totalPaid += paid;
-                
-                // Calculate collected profit (profit from paid invoices only)
+
+                // Calculate collected profit
                 if (paid > 0) {
                     const docItemsRevenue = doc.items ? doc.items.reduce((sum, item) => sum + (item.qty * item.unitPrice), 0) : 0;
                     const docItemsCost = doc.items ? doc.items.reduce((sum, item) => sum + (item.qty * (item.buyingPrice || 0)), 0) : 0;
                     const docLaborRevenue = doc.laborPrice || 0;
-                    
-                    // Calculate display mandays revenue
+
                     let docDisplayMandaysRevenue = 0;
                     if (doc.mandays && doc.mandays.days > 0) {
                         const displayDays = doc.mandays.days || 0;
@@ -199,8 +195,7 @@ const AccountingPage = () => {
                         const displayCostPerDay = doc.mandays.costPerDay || 0;
                         docDisplayMandaysRevenue = displayDays * displayPeople * displayCostPerDay;
                     }
-                    
-                    // Calculate real mandays cost
+
                     let docRealMandaysCost = 0;
                     if (doc.realMandays && doc.realMandays.days > 0) {
                         const realDays = doc.realMandays.days || 0;
@@ -208,18 +203,13 @@ const AccountingPage = () => {
                         const realCostPerDay = doc.realMandays.costPerDay || 0;
                         docRealMandaysCost = realDays * realPeople * realCostPerDay;
                     }
-                    
+
                     const docVatAmount = doc.vatAmount || 0;
-                    
-                    // Calculate profit from this document
-                    // Display mandays are profit, real mandays are cost
                     const docProfit = docItemsRevenue + docLaborRevenue + docDisplayMandaysRevenue - docItemsCost - docRealMandaysCost - docVatAmount;
-                    
-                    // Calculate collected profit proportionally
                     const paymentRatio = paid / doc.total;
                     collectedProfit += docProfit * paymentRatio;
                 }
-                
+
                 // Calculate items revenue and cost
                 if (doc.items && Array.isArray(doc.items)) {
                     doc.items.forEach(item => {
@@ -231,35 +221,22 @@ const AccountingPage = () => {
                 }
             });
 
-            // Calculate profit: 
-            // totalRevenue already includes display mandays (they're part of the document total)
-            // We need to subtract real mandays cost and other costs
             const totalProfit = totalRevenue - totalCost - vatCollected - realMandaysCost;
-            
-            // Recalculate outstanding amount based on filtered documents
+
+            // Calculate outstanding amounts
             let filteredTotalUnpaid = 0;
             let filteredOverdueAmount = 0;
-            
+
             filteredDocs.forEach(doc => {
                 const paid = doc.totalPaid || 0;
                 const unpaid = Math.max(0, (doc.total || 0) - paid);
                 filteredTotalUnpaid += unpaid;
-                
-                // Check if overdue
-                if (unpaid > 0 && doc.date.toDate() < thirtyDaysAgo) {
+
+                if (unpaid > 0 && new Date(doc.date) < thirtyDaysAgo) {
                     filteredOverdueAmount += unpaid;
                 }
             });
-            
-            // Debug logging
-            console.log('Profit Calculation:', {
-                totalRevenue,
-                totalCost,
-                vatCollected,
-                realMandaysCost,
-                displayMandaysRevenue,
-                totalProfit
-            });
+
             const averageInvoiceValue = filteredDocs.length > 0 ? totalRevenue / filteredDocs.length : 0;
 
             setStats({
@@ -279,30 +256,32 @@ const AccountingPage = () => {
                 overdueAmount: filteredOverdueAmount
             });
 
-            // Get unique clients for filter dropdown from all documents (not filtered)
-            const clientsSet = new Set(docs.map(doc => JSON.stringify({ id: doc.client.id, name: doc.client.name })));
-            const clientsList = Array.from(clientsSet).map(str => JSON.parse(str));
+            // Get unique clients
+            const clientsMap = new Map();
+            docs.forEach(doc => {
+                if (doc.clientId && doc.clientName) {
+                    clientsMap.set(doc.clientId, doc.clientName);
+                }
+            });
+            const clientsList = Array.from(clientsMap.entries()).map(([id, name]) => ({ id, name }));
             setUniqueClients(clientsList);
 
-            // Sort filtered documents by date
-            filteredDocs.sort((a, b) => b.date.toDate() - a.date.toDate());
+            filteredDocs.sort((a, b) => new Date(b.date) - new Date(a.date));
             setDocuments(filteredDocs);
+            setPayments(allPayments);
             setLoading(false);
-        }, (error) => {
-            console.error("Error fetching accounting data: ", error);
+        } catch (error) {
+            console.error("Error fetching accounting data:", error);
             setLoading(false);
-        });
-
-        return () => unsubscribe();
-    }, [filterPeriod, customStartDate, customEndDate, documentTypeFilter, categoryFilter, clientFilter, statusFilter]);
+        }
+    };
 
     const exportToCSV = () => {
         const headers = ['Date', 'Document #', 'Type', 'Status', 'Client', 'Items Revenue', 'Labor Revenue', 'Display Mandays', 'Real Mandays Cost', 'VAT', 'Total', 'Cost', 'Net Profit', 'Paid Amount', 'Collected Profit'];
         const rows = getFilteredDocuments().map(doc => {
             const itemsRevenue = doc.items ? doc.items.reduce((sum, item) => sum + (item.qty * item.unitPrice), 0) : 0;
             const cost = doc.items ? doc.items.reduce((sum, item) => sum + (item.qty * (item.buyingPrice || 0)), 0) : 0;
-            
-            // Calculate display mandays revenue
+
             let displayMandaysRevenue = 0;
             if (doc.mandays && doc.mandays.days > 0) {
                 const displayDays = doc.mandays.days || 0;
@@ -310,8 +289,7 @@ const AccountingPage = () => {
                 const displayCostPerDay = doc.mandays.costPerDay || 0;
                 displayMandaysRevenue = displayDays * displayPeople * displayCostPerDay;
             }
-            
-            // Calculate real mandays cost
+
             let realMandaysCost = 0;
             if (doc.realMandays && doc.realMandays.days > 0) {
                 const realDays = doc.realMandays.days || 0;
@@ -319,23 +297,23 @@ const AccountingPage = () => {
                 const realCostPerDay = doc.realMandays.costPerDay || 0;
                 realMandaysCost = realDays * realPeople * realCostPerDay;
             }
-            
+
             const profit = doc.total - cost - (doc.vatAmount || 0) - realMandaysCost;
             const paid = doc.totalPaid || 0;
             const paymentRatio = paid / doc.total;
             const collectedProfit = profit * paymentRatio;
-            
+
             let status = 'Active';
-            if (doc.convertedToInvoice) status = 'Converted';
-            else if (doc.transformedToInvoice) status = 'Transformed';
-            else if (doc.cancelled) status = 'Cancelled';
-            
+            if (doc.convertedTo) status = 'Converted';
+            else if (doc.transformedTo) status = 'Transformed';
+            else if (doc.status === 'cancelled') status = 'Cancelled';
+
             return [
-                doc.date.toDate().toLocaleDateString(),
+                new Date(doc.date).toLocaleDateString(),
                 doc.documentNumber,
                 doc.type === 'invoice' ? 'Invoice' : 'Proforma',
                 status,
-                doc.client.name,
+                doc.clientName || 'Unknown',
                 itemsRevenue.toFixed(2),
                 (doc.laborPrice || 0).toFixed(2),
                 displayMandaysRevenue.toFixed(2),
@@ -373,42 +351,40 @@ const AccountingPage = () => {
     };
 
     const getFilteredDocuments = () => {
-        // Documents are already filtered in useEffect, just apply sorting
         let filtered = [...documents];
-        
-        // Apply sorting
+
         filtered.sort((a, b) => {
             let aVal, bVal;
-            
+
             switch (sortColumn) {
                 case 'date':
-                    aVal = a.date.toDate();
-                    bVal = b.date.toDate();
+                    aVal = new Date(a.date);
+                    bVal = new Date(b.date);
                     break;
                 case 'number':
                     aVal = a.documentNumber;
                     bVal = b.documentNumber;
                     break;
                 case 'client':
-                    aVal = a.client.name;
-                    bVal = b.client.name;
+                    aVal = a.clientName || '';
+                    bVal = b.clientName || '';
                     break;
                 case 'total':
                     aVal = a.total;
                     bVal = b.total;
                     break;
                 default:
-                    aVal = a.date.toDate();
-                    bVal = b.date.toDate();
+                    aVal = new Date(a.date);
+                    bVal = new Date(b.date);
             }
-            
+
             if (sortDirection === 'asc') {
                 return aVal > bVal ? 1 : -1;
             } else {
                 return aVal < bVal ? 1 : -1;
             }
         });
-        
+
         return filtered;
     };
 
@@ -424,7 +400,7 @@ const AccountingPage = () => {
         <div>
             <div className="flex justify-between items-center mb-6">
                 <h1 className="text-3xl font-bold text-gray-800">Accounting & Reports</h1>
-                <button 
+                <button
                     onClick={exportToCSV}
                     className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg shadow-md"
                 >
@@ -438,8 +414,8 @@ const AccountingPage = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Period</label>
-                        <select 
-                            value={filterPeriod} 
+                        <select
+                            value={filterPeriod}
                             onChange={(e) => setFilterPeriod(e.target.value)}
                             className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         >
@@ -450,13 +426,13 @@ const AccountingPage = () => {
                             <option value="custom">Custom Range</option>
                         </select>
                     </div>
-                    
+
                     {filterPeriod === 'custom' && (
                         <>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
-                                <input 
-                                    type="date" 
+                                <input
+                                    type="date"
                                     value={customStartDate}
                                     onChange={(e) => setCustomStartDate(e.target.value)}
                                     className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -464,8 +440,8 @@ const AccountingPage = () => {
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
-                                <input 
-                                    type="date" 
+                                <input
+                                    type="date"
                                     value={customEndDate}
                                     onChange={(e) => setCustomEndDate(e.target.value)}
                                     className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -473,11 +449,11 @@ const AccountingPage = () => {
                             </div>
                         </>
                     )}
-                    
+
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Document Type</label>
-                        <select 
-                            value={documentTypeFilter} 
+                        <select
+                            value={documentTypeFilter}
                             onChange={(e) => setDocumentTypeFilter(e.target.value)}
                             className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         >
@@ -486,7 +462,7 @@ const AccountingPage = () => {
                             <option value="proforma">Proformas Only</option>
                         </select>
                     </div>
-                    
+
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Revenue Type</label>
                         <select
@@ -500,11 +476,11 @@ const AccountingPage = () => {
                         </select>
                         <p className="text-xs text-gray-500 mt-1">Filter by revenue source</p>
                     </div>
-                    
+
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Client</label>
-                        <select 
-                            value={clientFilter} 
+                        <select
+                            value={clientFilter}
                             onChange={(e) => setClientFilter(e.target.value)}
                             className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         >
@@ -514,11 +490,11 @@ const AccountingPage = () => {
                             ))}
                         </select>
                     </div>
-                    
+
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                        <select 
-                            value={statusFilter} 
+                        <select
+                            value={statusFilter}
                             onChange={(e) => setStatusFilter(e.target.value)}
                             className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         >
@@ -528,7 +504,7 @@ const AccountingPage = () => {
                             <option value="overdue">Overdue (30+ days)</option>
                         </select>
                     </div>
-                    
+
                 </div>
             </div>
 
@@ -539,27 +515,27 @@ const AccountingPage = () => {
                     <p className="text-3xl font-bold mt-2">${stats.totalRevenue.toFixed(2)}</p>
                     <p className="text-sm mt-1">{stats.invoiceCount} documents</p>
                 </div>
-                
+
                 <div className="bg-gradient-to-r from-blue-400 to-blue-600 p-6 rounded-lg shadow-lg text-white">
                     <h3 className="text-lg font-semibold">Net Profit</h3>
                     <p className="text-3xl font-bold mt-2">${stats.totalProfit.toFixed(2)}</p>
                     <p className="text-sm mt-1">
-                        {stats.totalRevenue > 0 
+                        {stats.totalRevenue > 0
                             ? `${((stats.totalProfit / (stats.totalRevenue - stats.vatCollected)) * 100).toFixed(1)}% margin`
                             : '0% margin'}
                     </p>
                 </div>
-                
+
                 <div className="bg-gradient-to-r from-emerald-400 to-emerald-600 p-6 rounded-lg shadow-lg text-white">
                     <h3 className="text-lg font-semibold">Collected Profit</h3>
                     <p className="text-3xl font-bold mt-2">${stats.collectedProfit.toFixed(2)}</p>
                     <p className="text-sm mt-1">
-                        {stats.totalProfit > 0 
+                        {stats.totalProfit > 0
                             ? `${((stats.collectedProfit / stats.totalProfit) * 100).toFixed(1)}% collected`
                             : '0% collected'}
                     </p>
                 </div>
-                
+
                 <div className="bg-gradient-to-r from-purple-400 to-purple-600 p-6 rounded-lg shadow-lg text-white">
                     <h3 className="text-lg font-semibold">Average Document</h3>
                     <p className="text-3xl font-bold mt-2">${stats.averageInvoiceValue.toFixed(2)}</p>
@@ -573,22 +549,22 @@ const AccountingPage = () => {
                     <h3 className="text-lg font-semibold text-gray-700">Collected Payments</h3>
                     <p className="text-3xl font-bold text-green-600 mt-2">${stats.totalPaid.toFixed(2)}</p>
                     <p className="text-sm text-gray-500 mt-1">
-                        {stats.totalRevenue > 0 
+                        {stats.totalRevenue > 0
                             ? `${((stats.totalPaid / stats.totalRevenue) * 100).toFixed(1)}% collected`
                             : '0% collected'}
                     </p>
                 </div>
-                
+
                 <div className="bg-white p-6 rounded-lg shadow-lg border-l-4 border-orange-500">
                     <h3 className="text-lg font-semibold text-gray-700">Outstanding Amount</h3>
                     <p className="text-3xl font-bold text-orange-600 mt-2">${stats.totalUnpaid.toFixed(2)}</p>
                     <p className="text-sm text-gray-500 mt-1">
-                        {stats.totalRevenue > 0 
+                        {stats.totalRevenue > 0
                             ? `${((stats.totalUnpaid / stats.totalRevenue) * 100).toFixed(1)}% unpaid`
                             : '0% unpaid'}
                     </p>
                 </div>
-                
+
                 <div className="bg-white p-6 rounded-lg shadow-lg border-l-4 border-red-500">
                     <h3 className="text-lg font-semibold text-gray-700">Overdue Amount</h3>
                     <p className="text-3xl font-bold text-red-600 mt-2">${stats.overdueAmount.toFixed(2)}</p>
@@ -660,7 +636,7 @@ const AccountingPage = () => {
                         <div className="flex justify-between items-center">
                             <span className="text-gray-600">Profit Margin</span>
                             <span className="font-semibold">
-                                {stats.totalRevenue > 0 
+                                {stats.totalRevenue > 0
                                     ? `${((stats.totalProfit / (stats.totalRevenue - stats.vatCollected)) * 100).toFixed(1)}%`
                                     : '0%'}
                             </span>
@@ -715,19 +691,19 @@ const AccountingPage = () => {
                         <table className="min-w-full bg-white">
                             <thead className="bg-gray-50 text-gray-700 uppercase text-sm leading-normal border-b-2 border-gray-200">
                             <tr>
-                            <th 
+                            <th
                                 onClick={() => handleSort('date')}
                                 className="py-4 px-6 text-left cursor-pointer hover:bg-gray-100 font-semibold"
                                 >
                                     Date {sortColumn === 'date' && (sortDirection === 'asc' ? '↑' : '↓')}
                                 </th>
-                                <th 
+                                <th
                                     onClick={() => handleSort('number')}
                                     className="py-4 px-6 text-left cursor-pointer hover:bg-gray-100 font-semibold"
                                 >
                                     Document # {sortColumn === 'number' && (sortDirection === 'asc' ? '↑' : '↓')}
                                 </th>
-                                <th 
+                                <th
                                     onClick={() => handleSort('client')}
                                     className="py-4 px-6 text-left cursor-pointer hover:bg-gray-100 font-semibold"
                                 >
@@ -739,7 +715,7 @@ const AccountingPage = () => {
                                 <th className="py-4 px-6 text-right font-semibold">Display Mandays</th>
                                 <th className="py-4 px-6 text-right font-semibold">Real Mandays</th>
                                 <th className="py-4 px-6 text-right font-semibold">VAT</th>
-                                <th 
+                                <th
                                     onClick={() => handleSort('total')}
                                     className="py-4 px-6 text-right cursor-pointer hover:bg-gray-100 font-semibold"
                                 >
@@ -754,8 +730,7 @@ const AccountingPage = () => {
                                 {getFilteredDocuments().map(doc => {
                                     const itemsRevenue = doc.items ? doc.items.reduce((sum, item) => sum + (item.qty * item.unitPrice), 0) : 0;
                                     const cost = doc.items ? doc.items.reduce((sum, item) => sum + (item.qty * (item.buyingPrice || 0)), 0) : 0;
-                                    
-                                    // Calculate display mandays revenue
+
                                     let displayMandaysRevenue = 0;
                                     if (doc.mandays && doc.mandays.days > 0) {
                                         const displayDays = doc.mandays.days || 0;
@@ -763,8 +738,7 @@ const AccountingPage = () => {
                                         const displayCostPerDay = doc.mandays.costPerDay || 0;
                                         displayMandaysRevenue = displayDays * displayPeople * displayCostPerDay;
                                     }
-                                    
-                                    // Calculate real mandays cost
+
                                     let realMandaysCost = 0;
                                     if (doc.realMandays && doc.realMandays.days > 0) {
                                         const realDays = doc.realMandays.days || 0;
@@ -772,33 +746,33 @@ const AccountingPage = () => {
                                         const realCostPerDay = doc.realMandays.costPerDay || 0;
                                         realMandaysCost = realDays * realPeople * realCostPerDay;
                                     }
-                                    
+
                                     const profit = doc.total - cost - (doc.vatAmount || 0) - realMandaysCost;
-                                    const daysSinceIssued = Math.floor((new Date() - doc.date.toDate()) / (1000 * 60 * 60 * 24));
+                                    const daysSinceIssued = Math.floor((new Date() - new Date(doc.date)) / (1000 * 60 * 60 * 24));
                                     const totalPaid = doc.totalPaid || 0;
                                     const isPaid = totalPaid >= doc.total;
                                     const isOverdue = !isPaid && daysSinceIssued > 30;
-                                    
+
                                     return (
                                         <tr key={doc.id} className="border-b border-gray-200 hover:bg-gray-50 transition-colors duration-150">
-                                            <td className="py-4 px-6 text-left font-medium">{doc.date.toDate().toLocaleDateString()}</td>
+                                            <td className="py-4 px-6 text-left font-medium">{new Date(doc.date).toLocaleDateString()}</td>
                                             <td className="py-4 px-6 text-left font-medium">{doc.documentNumber}</td>
-                                            <td className="py-4 px-6 text-left">{doc.client.name}</td>
+                                            <td className="py-4 px-6 text-left">{doc.clientName || 'Unknown'}</td>
                                             <td className="py-4 px-6 text-center">
                                                 <div className="flex flex-col items-center space-y-1">
                                                     <span className={`px-2 py-1 text-xs rounded-full font-medium ${
-                                                        doc.type === 'invoice' 
-                                                            ? 'bg-blue-100 text-blue-800' 
+                                                        doc.type === 'invoice'
+                                                            ? 'bg-blue-100 text-blue-800'
                                                             : 'bg-purple-100 text-purple-800'
                                                     }`}>
                                                         {doc.type === 'invoice' ? 'Invoice' : 'Proforma'}
                                                     </span>
-                                                    {doc.convertedToInvoice && (
+                                                    {doc.convertedTo && (
                                                         <span className="px-2 py-1 text-xs rounded-full bg-orange-100 text-orange-800 font-medium">
                                                             Converted
                                                         </span>
                                                     )}
-                                                    {doc.transformedToInvoice && (
+                                                    {doc.transformedTo && (
                                                         <span className="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-800 font-medium">
                                                             Transformed
                                                         </span>

@@ -1,6 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { collection, addDoc, updateDoc, doc, runTransaction, getDoc } from 'firebase/firestore';
-import { auth, db } from '../firebase/config';
+import { settingsAPI, documentsAPI } from '../services/api';
 import { COMPANY_INFO } from '../config';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -14,8 +13,8 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
     useEffect(() => {
         if (documentToView) {
             const originalTitle = document.title;
-            const { type, documentNumber, client } = documentToView;
-            document.title = `${type}-${documentNumber}-${client.name}`;
+            const { type, documentNumber, clientName } = documentToView;
+            document.title = `${type}-${documentNumber}-${clientName}`;
 
             // Cleanup function to reset title
             return () => {
@@ -26,13 +25,9 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
 
     useEffect(() => {
         const fetchUserSettings = async () => {
-            if (!auth.currentUser) return;
-            const settingsRef = doc(db, 'settings', auth.currentUser.uid);
             try {
-                const docSnap = await getDoc(settingsRef);
-                if (docSnap.exists()) {
-                    setUserSettings(docSnap.data());
-                }
+                const settings = await settingsAPI.get();
+                setUserSettings(settings);
             } catch (error) {
                 console.error("Error fetching user settings:", error);
             }
@@ -44,36 +39,36 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
         // Check if iOS and in standalone mode (Add to Home Screen)
         const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
         const isStandalone = window.navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
-        
+
         if (isIOS && isStandalone && navigator.share && printRef.current) {
             try {
                 setIsGeneratingPDF(true);
-                
+
                 // Get the document title for filename
-                const { type, documentNumber, client } = documentToView;
-                const filename = `${type}-${documentNumber}-${client.name}.pdf`;
-                
+                const { type, documentNumber, clientName } = documentToView;
+                const filename = `${type}-${documentNumber}-${clientName}.pdf`;
+
                 console.log('Capturing canvas...');
                 // A4 dimensions in pixels at 96 DPI (standard screen resolution)
                 // A4: 210mm x 297mm = 8.27" x 11.69" = 794px x 1123px at 96 DPI
                 const a4WidthPx = 794; // A4 width in pixels (210mm = 794px at 96 DPI)
-                
+
                 const element = printRef.current;
-                
+
                 // Store original styles
                 const originalWidth = element.style.width;
                 const originalMaxWidth = element.style.maxWidth;
                 const originalMargin = element.style.margin;
-                
+
                 // Set fixed A4 width for consistent capture (matches browser print)
                 element.style.width = a4WidthPx + 'px';
                 element.style.maxWidth = a4WidthPx + 'px';
                 element.style.margin = '0';
                 element.style.padding = '32px'; // 8*4 = 32px padding
-                
+
                 // Force layout recalculation
                 element.offsetHeight; // Trigger reflow
-                
+
                 // Wait for logo image to load if present
                 const logoImg = element.querySelector('img');
                 if (logoImg && logoImg.src) {
@@ -87,16 +82,16 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
                         }
                     });
                 }
-                
+
                 // Wait for layout to update
                 await new Promise(resolve => setTimeout(resolve, 300));
-                
+
                 // Get the actual rendered dimensions
                 const elementWidth = element.offsetWidth || a4WidthPx;
                 const elementHeight = element.scrollHeight || element.offsetHeight;
-                
+
                 console.log('Element dimensions:', elementWidth, 'x', elementHeight);
-                
+
                 // Capture the print area as canvas - use A4 width for consistency
                 const canvas = await html2canvas(element, {
                     scale: 2, // Higher scale for better quality
@@ -119,7 +114,7 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
                             clonedElement.style.margin = '0';
                             clonedElement.style.padding = '32px';
                             clonedElement.style.boxSizing = 'border-box';
-                            
+
                             // Ensure header layout is horizontal with logo on left
                             const header = clonedElement.querySelector('header');
                             if (header) {
@@ -128,7 +123,7 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
                                 header.style.justifyContent = 'space-between';
                                 header.style.alignItems = 'flex-start';
                             }
-                            
+
                             // Ensure logo images load
                             const images = clonedElement.querySelectorAll('img');
                             images.forEach(img => {
@@ -139,7 +134,7 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
                                     img.src = src;
                                 }
                             });
-                            
+
                             // Ensure grid layout is 2 columns for details section
                             const detailsSection = clonedElement.querySelector('section.grid');
                             if (detailsSection) {
@@ -149,43 +144,43 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
                         }
                     }
                 });
-                
+
                 // Restore original styles
                 element.style.width = originalWidth;
                 element.style.maxWidth = originalMaxWidth;
                 element.style.margin = originalMargin;
-                
+
                 console.log('Canvas captured:', canvas.width, 'x', canvas.height);
-                
+
                 // Convert canvas to image data
                 const imgData = canvas.toDataURL('image/png', 1.0);
                 console.log('Image data generated, length:', imgData.length);
-                
+
                 // A4 dimensions in mm
                 const a4Width = 210; // A4 width in mm
                 const a4Height = 297; // A4 height in mm
-                
+
                 // Calculate the scale factor: canvas pixels to mm
                 // We want the image to fill the full A4 page width
                 const pixelsPerMm = canvas.width / a4Width;
                 const imgWidthMm = a4Width; // Full A4 width
                 const imgHeightMm = canvas.height / pixelsPerMm; // Maintain aspect ratio
-                
+
                 console.log('PDF dimensions: A4', a4Width, 'x', a4Height, 'mm');
                 console.log('Image dimensions:', imgWidthMm, 'x', imgHeightMm, 'mm');
-                
+
                 // Create PDF instance - use standard A4 format
                 const pdf = new jsPDF({
                     orientation: 'portrait',
                     unit: 'mm',
                     format: 'a4'
                 });
-                
+
                 console.log('Adding image to PDF...');
                 // Add image to PDF - fill full width (A4 format)
                 // For content taller than A4, add multiple pages (only if actually needed)
                 const pageHeight = a4Height;
-                
+
                 if (imgHeightMm <= pageHeight) {
                     // Single page - add image at top
                     pdf.addImage(imgData, 'PNG', 0, 0, imgWidthMm, imgHeightMm, undefined, 'FAST');
@@ -194,56 +189,56 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
                     const sourceHeight = canvas.height;
                     const sourceWidth = canvas.width;
                     let yOffset = 0;
-                    
+
                     while (yOffset < imgHeightMm) {
                         if (yOffset > 0) {
                             pdf.addPage();
                         }
-                        
+
                         const remainingHeight = imgHeightMm - yOffset;
                         const heightThisPage = Math.min(pageHeight, remainingHeight);
-                        
+
                         // Only proceed if we actually have content for this page
                         if (heightThisPage <= 0) break;
-                        
+
                         // Calculate source canvas region for this page
                         const sourceY = (yOffset / imgHeightMm) * sourceHeight;
                         const sourceHeightThisPage = Math.ceil((heightThisPage / imgHeightMm) * sourceHeight);
-                        
+
                         // Ensure we don't exceed source canvas bounds
                         if (sourceY >= sourceHeight) break;
-                        
+
                         // Create temporary canvas for this page slice
                         const pageCanvas = document.createElement('canvas');
                         pageCanvas.width = sourceWidth;
                         pageCanvas.height = Math.min(sourceHeightThisPage, sourceHeight - sourceY);
                         const ctx = pageCanvas.getContext('2d');
                         ctx.drawImage(canvas, 0, sourceY, sourceWidth, Math.min(sourceHeightThisPage, sourceHeight - sourceY), 0, 0, sourceWidth, Math.min(sourceHeightThisPage, sourceHeight - sourceY));
-                        
+
                         const pageImgData = pageCanvas.toDataURL('image/png', 1.0);
                         pdf.addImage(pageImgData, 'PNG', 0, 0, imgWidthMm, heightThisPage, undefined, 'FAST');
-                        
+
                         yOffset += heightThisPage;
-                        
+
                         // Prevent infinite loop
                         if (yOffset >= imgHeightMm) break;
                     }
                 }
-                
+
                 console.log('Generating PDF blob...');
                 // Generate PDF blob
                 const pdfBlob = pdf.output('blob');
                 console.log('PDF blob generated, size:', pdfBlob.size);
-                
+
                 // Create a File object for sharing
                 const file = new File([pdfBlob], filename, { type: 'application/pdf' });
-                
+
                 console.log('Sharing PDF file...');
                 // Share the PDF file
                 if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
                     await navigator.share({
                         title: `${type} ${documentNumber}`,
-                        text: `${type} ${documentNumber} for ${client.name}`,
+                        text: `${type} ${documentNumber} for ${clientName}`,
                         files: [file]
                     });
                     console.log('PDF shared successfully');
@@ -266,7 +261,7 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
                     console.error('Share error details:', error);
                     console.error('Error stack:', error.stack);
                     console.error('Error message:', error.message);
-                    
+
                     // Show user-friendly error message
                     let errorMessage = 'Failed to generate PDF. ';
                     if (error.message.includes('canvas') || error.name === 'SecurityError') {
@@ -277,7 +272,7 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
                     } else {
                         errorMessage += error.message || 'Unknown error occurred. Please try again.';
                     }
-                    
+
                     alert(errorMessage);
                 }
             } finally {
@@ -293,7 +288,7 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
         // Check if iOS and in standalone mode (Add to Home Screen)
         const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
         const isStandalone = window.navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
-        
+
         // For iOS standalone, the Share button should be shown instead, so this shouldn't be called
         // But if it is, just try to print anyway
         if (isIOS && isStandalone) {
@@ -307,7 +302,7 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
             }
             return;
         }
-        
+
         // For other devices, use print dialog
         try {
             window.print();
@@ -322,8 +317,8 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
     };
 
     const handleConvertToInvoice = async () => {
-        if (!auth.currentUser || documentToView.type !== 'proforma') return;
-        
+        if (documentToView.type !== 'proforma') return;
+
         // Prevent double click
         if (isConverting) {
             console.log('Conversion already in progress');
@@ -331,50 +326,13 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
         }
 
         setIsConverting(true);
-        
+
         try {
-            // Get next invoice number
-            const year = new Date().getFullYear();
-            const counterRef = doc(db, `counters/${auth.currentUser.uid}/documentCounters`, 'invoiceCounter');
-            const newInvoiceNumber = await runTransaction(db, async (transaction) => {
-                const counterDoc = await transaction.get(counterRef);
-                let newLastId = 1;
-                if (counterDoc.exists()) {
-                    newLastId = counterDoc.data().lastId + 1;
-                }
-                transaction.set(counterRef, { lastId: newLastId }, { merge: true });
-                return `INV-${year}-${String(newLastId).padStart(3, '0')}`;
-            });
-            
-            // Create new invoice document
-            const invoiceData = {
-                ...documentToView,
-                type: 'invoice',
-                documentNumber: newInvoiceNumber,
-                proformaNumber: documentToView.documentNumber,
-                convertedFrom: documentToView.id,
-                date: new Date()
-            };
-            
-            // Remove proforma-specific fields
-            delete invoiceData.id;
-            delete invoiceData.converted;
-            
-            // Add the new invoice
-            await addDoc(collection(db, `documents/${auth.currentUser.uid}/userDocuments`), invoiceData);
-            
-            // Mark original proforma as converted
-            const proformaRef = doc(db, `documents/${auth.currentUser.uid}/userDocuments`, documentToView.id);
-            await updateDoc(proformaRef, {
-                converted: true,
-                convertedAt: new Date(),
-                convertedToInvoiceNumber: newInvoiceNumber
-            });
-            
+            await documentsAPI.convertToInvoice(documentToView.id);
             // Navigate to invoices page
             navigateTo('invoices');
         } catch (error) {
-            console.error("Error converting proforma to invoice: ", error);
+            console.error("Error converting proforma to invoice:", error);
             alert('Error converting proforma to invoice. Please try again.');
             setIsConverting(false);
         }
@@ -384,7 +342,16 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
         return <p>No document selected.</p>;
     }
 
-    const { type, documentNumber, client, date, items, laborPrice, mandays, notes, vatApplied, subtotal, vatAmount, total } = documentToView;
+    const { type, documentNumber, clientName, date, items, laborPrice, mandays, notes, vatApplied, subtotal, vatAmount, total } = documentToView;
+
+    // Parse client data - handle both old format (client object) and new format (clientName, etc.)
+    const clientInfo = {
+        name: clientName || documentToView.client?.name || 'Unknown Client',
+        address: documentToView.clientAddress || documentToView.client?.address || '',
+        location: documentToView.clientLocation || documentToView.client?.location || '',
+        phone: documentToView.clientPhone || documentToView.client?.phone || documentToView.client?.phoneNumber || '',
+        vatNumber: documentToView.clientVatNumber || documentToView.client?.vatNumber || ''
+    };
 
     // Use user settings if available, otherwise fall back to config defaults
     const companyInfo = {
@@ -392,10 +359,13 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
         address: userSettings?.companyAddress || COMPANY_INFO.address,
         phone: userSettings?.companyPhone || COMPANY_INFO.phone,
         vatNumber: userSettings?.companyVatNumber || COMPANY_INFO.vatNumber,
-        logo: userSettings?.logoUrl ? (
-            <img src={userSettings.logoUrl} alt="Company Logo" className="h-12 w-auto" />
+        logo: userSettings?.logo ? (
+            <img src={userSettings.logo} alt="Company Logo" className="h-12 w-auto" />
         ) : COMPANY_INFO.logo
     };
+
+    // Parse date - handle both Date objects and ISO strings
+    const documentDate = date ? (typeof date === 'string' ? new Date(date) : date.toDate ? date.toDate() : date) : new Date();
 
     return (
         <div>
@@ -427,8 +397,8 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
                     <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">View Document</h1>
                     <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-                        {type === 'proforma' && !documentToView.converted && (
-                            <button 
+                        {type === 'proforma' && !documentToView.convertedTo && (
+                            <button
                                 onClick={handleConvertToInvoice}
                                 disabled={isConverting}
                                 className="flex-1 sm:flex-none bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-3 sm:px-4 rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
@@ -438,8 +408,8 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
                         )}
                         {/* Show Share button for iOS standalone mode, otherwise show Print */}
                         {(window.navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)) && navigator.share ? (
-                            <button 
-                                onClick={handleShare} 
+                            <button
+                                onClick={handleShare}
                                 disabled={isGeneratingPDF}
                                 className="flex-1 sm:flex-none bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 sm:px-4 rounded-lg transition-colors duration-200 text-sm sm:text-base flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
@@ -476,11 +446,11 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
                 <section className="grid grid-cols-2 gap-4 my-4">
                     <div>
                         <h3 className="text-xs font-semibold text-gray-500 uppercase mb-1">Billed To</h3>
-                        <p className="font-bold text-gray-800 text-sm">{client.name}</p>
-                        {client.address && <p className="text-gray-600 text-xs">{client.address}</p>}
-                        <p className="text-gray-600 text-xs">{client.location}</p>
-                        <p className="text-gray-600 text-xs">{client.phone || client.phoneNumber}</p>
-                        {client.vatNumber && <p className="text-gray-600 text-xs">VAT: {client.vatNumber}</p>}
+                        <p className="font-bold text-gray-800 text-sm">{clientInfo.name}</p>
+                        {clientInfo.address && <p className="text-gray-600 text-xs">{clientInfo.address}</p>}
+                        {clientInfo.location && <p className="text-gray-600 text-xs">{clientInfo.location}</p>}
+                        {clientInfo.phone && <p className="text-gray-600 text-xs">{clientInfo.phone}</p>}
+                        {clientInfo.vatNumber && <p className="text-gray-600 text-xs">VAT: {clientInfo.vatNumber}</p>}
                     </div>
                     <div className="text-left sm:text-right">
                         <h3 className="text-xs font-semibold text-gray-500 uppercase mb-1">From</h3>
@@ -488,7 +458,7 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
                         <p className="text-gray-600 text-xs">{companyInfo.address}</p>
                         <p className="text-gray-600 text-xs">{companyInfo.phone}</p>
                         {vatApplied && <p className="text-gray-600 text-xs">VAT #: {companyInfo.vatNumber}</p>}
-                        <p className="mt-2 text-xs"><span className="font-semibold text-gray-500">Date:</span> {date.toDate().toLocaleDateString()}</p>
+                        <p className="mt-2 text-xs"><span className="font-semibold text-gray-500">Date:</span> {documentDate.toLocaleDateString()}</p>
                     </div>
                 </section>
 
@@ -514,7 +484,7 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
                             </tr>
                         </thead>
                         <tbody>
-                            {items.map((item, index) => (
+                            {items && items.map((item, index) => (
                                 <tr key={index} className="border-b">
                                     <td className="py-1 px-2 text-xs">{item.partNumber}</td>
                                     <td className="py-1 px-2 text-xs">

@@ -6,9 +6,11 @@ const SettingsPage = () => {
     const [companyAddress, setCompanyAddress] = useState('');
     const [companyPhone, setCompanyPhone] = useState('');
     const [companyEmail, setCompanyEmail] = useState('');
+    const [companyVatNumber, setCompanyVatNumber] = useState('');
+    const [logo, setLogo] = useState('');
+    const [footerMessage, setFooterMessage] = useState('Thank you for your business!');
     const [taxRate, setTaxRate] = useState(0);
     const [currency, setCurrency] = useState('USD');
-    const [logoBase64, setLogoBase64] = useState('');
     const [imageFile, setImageFile] = useState(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -27,10 +29,11 @@ const SettingsPage = () => {
                 setCompanyAddress(settings.companyAddress || '');
                 setCompanyPhone(settings.companyPhone || '');
                 setCompanyEmail(settings.companyEmail || '');
+                setCompanyVatNumber(settings.companyVatNumber || '');
+                setLogo(settings.logo || '');
+                setFooterMessage(settings.footerMessage || 'Thank you for your business!');
                 setTaxRate(settings.taxRate || 0);
                 setCurrency(settings.currency || 'USD');
-                // Logo will be stored in database as base64 or URL
-                // For now, we'll handle it in the backend
             }
         } catch (error) {
             console.error('Error fetching settings:', error);
@@ -60,7 +63,7 @@ const SettingsPage = () => {
             // Convert to base64
             const reader = new FileReader();
             reader.onload = () => {
-                setLogoBase64(reader.result);
+                setLogo(reader.result);
             };
             reader.onerror = () => {
                 setFeedback({ type: 'error', message: 'Failed to read image file' });
@@ -70,6 +73,11 @@ const SettingsPage = () => {
             setImageFile(file);
             setFeedback({ type: '', message: '' });
         }
+    };
+
+    const handleRemoveLogo = () => {
+        setLogo('');
+        setImageFile(null);
     };
 
     const handleSave = async (e) => {
@@ -83,12 +91,12 @@ const SettingsPage = () => {
                 companyAddress,
                 companyPhone,
                 companyEmail,
+                companyVatNumber,
+                logo, // Include logo (base64 string)
+                footerMessage,
                 taxRate: parseFloat(taxRate) || 0,
                 currency,
             };
-
-            // Note: Logo upload will be handled in a future update
-            // For now, we're storing basic company information
 
             await settingsAPI.update(settingsData);
 
@@ -116,112 +124,27 @@ const SettingsPage = () => {
 
             <div className="bg-white p-8 rounded-lg shadow-lg">
                 <form onSubmit={handleSave} className="space-y-6">
-                    <div>
-                        <label htmlFor="companyName" className="block text-sm font-medium text-gray-700 mb-1">
-                            Company Name
-                        </label>
-                        <input
-                            type="text"
-                            id="companyName"
-                            value={companyName}
-                            onChange={(e) => setCompanyName(e.target.value)}
-                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                            placeholder="Enter your company name"
-                        />
-                    </div>
-
-                    <div>
-                        <label htmlFor="companyAddress" className="block text-sm font-medium text-gray-700 mb-1">
-                            Company Address
-                        </label>
-                        <input
-                            type="text"
-                            id="companyAddress"
-                            value={companyAddress}
-                            onChange={(e) => setCompanyAddress(e.target.value)}
-                            placeholder="123 Business St, City, State 12345"
-                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                        />
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label htmlFor="companyPhone" className="block text-sm font-medium text-gray-700 mb-1">
-                                Phone Number
-                            </label>
-                            <input
-                                type="text"
-                                id="companyPhone"
-                                value={companyPhone}
-                                onChange={(e) => setCompanyPhone(e.target.value)}
-                                placeholder="+1 (555) 123-4567"
-                                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                            />
-                        </div>
-
-                        <div>
-                            <label htmlFor="companyEmail" className="block text-sm font-medium text-gray-700 mb-1">
-                                Company Email
-                            </label>
-                            <input
-                                type="email"
-                                id="companyEmail"
-                                value={companyEmail}
-                                onChange={(e) => setCompanyEmail(e.target.value)}
-                                placeholder="contact@company.com"
-                                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                            />
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label htmlFor="taxRate" className="block text-sm font-medium text-gray-700 mb-1">
-                                Default Tax Rate (%)
-                            </label>
-                            <input
-                                type="number"
-                                id="taxRate"
-                                value={taxRate}
-                                onChange={(e) => setTaxRate(e.target.value)}
-                                min="0"
-                                max="100"
-                                step="0.01"
-                                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                                placeholder="0"
-                            />
-                        </div>
-
-                        <div>
-                            <label htmlFor="currency" className="block text-sm font-medium text-gray-700 mb-1">
-                                Currency
-                            </label>
-                            <select
-                                id="currency"
-                                value={currency}
-                                onChange={(e) => setCurrency(e.target.value)}
-                                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                            >
-                                <option value="USD">USD - US Dollar</option>
-                                <option value="EUR">EUR - Euro</option>
-                                <option value="GBP">GBP - British Pound</option>
-                                <option value="CAD">CAD - Canadian Dollar</option>
-                                <option value="AUD">AUD - Australian Dollar</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Company Logo
-                        </label>
-                        <div className="mt-2 flex items-center space-x-4">
-                            {logoBase64 && (
-                                <img
-                                    src={logoBase64}
-                                    alt="Company Logo"
-                                    className="h-16 w-16 rounded object-cover border border-gray-300"
-                                />
+                    {/* Company Logo Section */}
+                    <div className="border-b border-gray-200 pb-6">
+                        <h2 className="text-xl font-semibold text-gray-800 mb-4">Company Logo</h2>
+                        <div className="flex items-center space-x-6">
+                            {logo && (
+                                <div className="relative">
+                                    <img
+                                        src={logo}
+                                        alt="Company Logo"
+                                        className="h-24 w-24 rounded-lg object-contain border-2 border-gray-300 p-2 bg-white"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={handleRemoveLogo}
+                                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
+                                    >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                                        </svg>
+                                    </button>
+                                </div>
                             )}
                             <div className="flex-1">
                                 <input
@@ -230,12 +153,159 @@ const SettingsPage = () => {
                                     accept="image/png,image/jpeg,image/jpg,image/gif"
                                     className="text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
                                 />
-                                <p className="text-xs text-gray-500 mt-1">
+                                <p className="text-xs text-gray-500 mt-2">
                                     Max size: 1MB. Formats: PNG, JPG, GIF
                                 </p>
                                 <p className="text-xs text-gray-400 mt-1">
-                                    Note: Logo upload feature will be fully implemented in a future update
+                                    Your logo will appear on all invoices and proformas
                                 </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Company Information Section */}
+                    <div className="border-b border-gray-200 pb-6">
+                        <h2 className="text-xl font-semibold text-gray-800 mb-4">Company Information</h2>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label htmlFor="companyName" className="block text-sm font-medium text-gray-700 mb-1">
+                                    Company Name *
+                                </label>
+                                <input
+                                    type="text"
+                                    id="companyName"
+                                    value={companyName}
+                                    onChange={(e) => setCompanyName(e.target.value)}
+                                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                                    placeholder="Enter your company name"
+                                    required
+                                />
+                            </div>
+
+                            <div>
+                                <label htmlFor="companyAddress" className="block text-sm font-medium text-gray-700 mb-1">
+                                    Company Address *
+                                </label>
+                                <textarea
+                                    id="companyAddress"
+                                    value={companyAddress}
+                                    onChange={(e) => setCompanyAddress(e.target.value)}
+                                    placeholder="123 Business St, City, State 12345"
+                                    rows="2"
+                                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                                    required
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label htmlFor="companyPhone" className="block text-sm font-medium text-gray-700 mb-1">
+                                        Phone Number *
+                                    </label>
+                                    <input
+                                        type="text"
+                                        id="companyPhone"
+                                        value={companyPhone}
+                                        onChange={(e) => setCompanyPhone(e.target.value)}
+                                        placeholder="+1 (555) 123-4567"
+                                        className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                                        required
+                                    />
+                                </div>
+
+                                <div>
+                                    <label htmlFor="companyEmail" className="block text-sm font-medium text-gray-700 mb-1">
+                                        Company Email *
+                                    </label>
+                                    <input
+                                        type="email"
+                                        id="companyEmail"
+                                        value={companyEmail}
+                                        onChange={(e) => setCompanyEmail(e.target.value)}
+                                        placeholder="contact@company.com"
+                                        className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label htmlFor="companyVatNumber" className="block text-sm font-medium text-gray-700 mb-1">
+                                    VAT Number
+                                </label>
+                                <input
+                                    type="text"
+                                    id="companyVatNumber"
+                                    value={companyVatNumber}
+                                    onChange={(e) => setCompanyVatNumber(e.target.value)}
+                                    placeholder="Enter your VAT/Tax ID number"
+                                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                                />
+                                <p className="text-xs text-gray-500 mt-1">
+                                    This will appear on invoices when VAT is applied
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Invoice Settings Section */}
+                    <div className="border-b border-gray-200 pb-6">
+                        <h2 className="text-xl font-semibold text-gray-800 mb-4">Invoice Settings</h2>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label htmlFor="footerMessage" className="block text-sm font-medium text-gray-700 mb-1">
+                                    Footer Message
+                                </label>
+                                <textarea
+                                    id="footerMessage"
+                                    value={footerMessage}
+                                    onChange={(e) => setFooterMessage(e.target.value)}
+                                    placeholder="Thank you for your business!"
+                                    rows="2"
+                                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                                />
+                                <p className="text-xs text-gray-500 mt-1">
+                                    This message will appear at the bottom of all invoices and proformas
+                                </p>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label htmlFor="taxRate" className="block text-sm font-medium text-gray-700 mb-1">
+                                        Default Tax Rate (%)
+                                    </label>
+                                    <input
+                                        type="number"
+                                        id="taxRate"
+                                        value={taxRate}
+                                        onChange={(e) => setTaxRate(e.target.value)}
+                                        min="0"
+                                        max="100"
+                                        step="0.01"
+                                        className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                                        placeholder="0"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label htmlFor="currency" className="block text-sm font-medium text-gray-700 mb-1">
+                                        Currency
+                                    </label>
+                                    <select
+                                        id="currency"
+                                        value={currency}
+                                        onChange={(e) => setCurrency(e.target.value)}
+                                        className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                                    >
+                                        <option value="USD">USD - US Dollar</option>
+                                        <option value="EUR">EUR - Euro</option>
+                                        <option value="GBP">GBP - British Pound</option>
+                                        <option value="CAD">CAD - Canadian Dollar</option>
+                                        <option value="AUD">AUD - Australian Dollar</option>
+                                    </select>
+                                </div>
                             </div>
                         </div>
                     </div>

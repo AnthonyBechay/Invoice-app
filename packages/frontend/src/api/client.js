@@ -1,16 +1,14 @@
-import { auth } from '../firebase/config';
-
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 /**
- * Get the current user's auth token
+ * Get the current user's auth token from localStorage
  */
-const getAuthToken = async () => {
-  const user = auth.currentUser;
-  if (!user) {
+const getAuthToken = () => {
+  const token = localStorage.getItem('token');
+  if (!token) {
     throw new Error('No authenticated user');
   }
-  return await user.getIdToken();
+  return token;
 };
 
 /**
@@ -18,7 +16,7 @@ const getAuthToken = async () => {
  */
 const apiRequest = async (endpoint, options = {}) => {
   try {
-    const token = await getAuthToken();
+    const token = getAuthToken();
 
     const defaultHeaders = {
       'Content-Type': 'application/json',

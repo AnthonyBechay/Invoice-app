@@ -4,7 +4,8 @@
       "Bash(firebase deploy:*)",
       "Bash(npm run build:*)",
       "Bash(pnpm install:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(npx prisma migrate:*)"
     ],
     "deny": [],
     "ask": []
