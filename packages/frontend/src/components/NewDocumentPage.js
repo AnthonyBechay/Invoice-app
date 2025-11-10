@@ -278,18 +278,30 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
                             <tr>
                                 <th className="py-2 px-2 sm:px-4 text-left text-xs sm:text-sm font-semibold text-gray-600">Item/Part #</th>
                                 <th className="py-2 px-2 sm:px-4 text-left text-xs sm:text-sm font-semibold text-gray-600">Description</th>
-                                <th className="py-2 px-2 sm:px-4 text-left text-xs sm:text-sm font-semibold text-gray-600">Qty</th>
-                                <th className="py-2 px-2 sm:px-4 text-left text-xs sm:text-sm font-semibold text-gray-600">Unit Price</th>
-                                <th className="py-2 px-2 sm:px-4 text-left text-xs sm:text-sm font-semibold text-gray-600 buying-price-col">Buying Price</th>
+                                <th className="py-2 px-2 sm:px-4 text-center text-xs sm:text-sm font-semibold text-gray-600">Qty</th>
+                                <th className="py-2 px-2 sm:px-4 text-right text-xs sm:text-sm font-semibold text-gray-500 buying-price-col">
+                                    <div className="flex items-center justify-end gap-1">
+                                        <span>Cost</span>
+                                        <span className="text-xs">(ref)</span>
+                                    </div>
+                                </th>
+                                <th className="py-2 px-2 sm:px-4 text-left text-xs sm:text-sm font-semibold text-green-700">
+                                    <div className="flex items-center gap-1">
+                                        <span>Selling Price</span>
+                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                        </svg>
+                                    </div>
+                                </th>
                                 <th className="py-2 px-2 sm:px-4 text-right text-xs sm:text-sm font-semibold text-gray-600">Total</th>
                                 <th className="py-2 px-2 sm:px-4 text-center text-xs sm:text-sm font-semibold text-gray-600 no-print"></th>
                             </tr>
                         </thead>
                         <tbody>
                             {lineItems.map((item, index) => (
-                                <tr key={index} className="border-b">
+                                <tr key={index} className="border-b hover:bg-gray-50">
                                     <td className="py-2 px-2 sm:px-4 text-xs sm:text-sm">
-                                        {item.partNumber || '-'}
+                                        <div className="font-medium">{item.partNumber || '-'}</div>
                                         {item.sku && <div className="text-xs text-gray-500">SKU: {item.sku}</div>}
                                     </td>
                                     <td className="py-2 px-2 sm:px-4">
@@ -301,26 +313,55 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
                                             {item.specifications}
                                         </div>
                                     </td>
-                                    <td className="py-2 px-2 sm:px-4">
+                                    <td className="py-2 px-2 sm:px-4 text-center">
                                         <input
                                             type="number"
                                             value={item.qty}
                                             onChange={(e) => handleLineItemChange(index, 'qty', e.target.value)}
-                                            className="w-16 sm:w-20 p-1 border rounded-md text-xs sm:text-sm"
+                                            className="w-16 sm:w-20 p-1 border border-gray-300 rounded-md text-xs sm:text-sm text-center"
+                                            min="0"
+                                            step="0.01"
                                         />
+                                    </td>
+                                    <td className="py-2 px-2 sm:px-4 text-right buying-price-col">
+                                        <div className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 rounded text-xs sm:text-sm text-gray-500">
+                                            <span className="text-xs">$</span>
+                                            <span>{(item.buyingPrice || 0).toFixed(2)}</span>
+                                        </div>
                                     </td>
                                     <td className="py-2 px-2 sm:px-4">
-                                        <input
-                                            type="number"
-                                            value={item.unitPrice}
-                                            onChange={(e) => handleLineItemChange(index, 'unitPrice', e.target.value)}
-                                            className="w-20 sm:w-24 p-1 border rounded-md text-xs sm:text-sm"
-                                        />
+                                        <div className="flex items-center gap-1">
+                                            <span className="text-green-600 font-medium text-xs sm:text-sm">$</span>
+                                            <input
+                                                type="number"
+                                                value={item.unitPrice}
+                                                onChange={(e) => handleLineItemChange(index, 'unitPrice', e.target.value)}
+                                                className="w-20 sm:w-24 p-1 border-2 border-green-300 rounded-md text-xs sm:text-sm font-medium text-green-700 focus:border-green-500 focus:ring-1 focus:ring-green-500"
+                                                min="0"
+                                                step="0.01"
+                                            />
+                                        </div>
+                                        {item.buyingPrice > 0 && item.unitPrice > 0 && (
+                                            <div className="text-xs mt-1">
+                                                {item.unitPrice > item.buyingPrice ? (
+                                                    <span className="text-green-600">
+                                                        +${(item.unitPrice - item.buyingPrice).toFixed(2)} profit
+                                                    </span>
+                                                ) : item.unitPrice < item.buyingPrice ? (
+                                                    <span className="text-red-600">
+                                                        -${(item.buyingPrice - item.unitPrice).toFixed(2)} loss
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-gray-500">No margin</span>
+                                                )}
+                                            </div>
+                                        )}
                                     </td>
-                                    <td className="py-2 px-2 sm:px-4 text-gray-400 buying-price-col text-xs sm:text-sm">${(item.buyingPrice || 0).toFixed(2)}</td>
-                                    <td className="py-2 px-2 sm:px-4 text-right font-medium text-xs sm:text-sm">${(item.qty * item.unitPrice).toFixed(2)}</td>
+                                    <td className="py-2 px-2 sm:px-4 text-right font-semibold text-xs sm:text-sm text-gray-800">
+                                        ${(item.qty * item.unitPrice).toFixed(2)}
+                                    </td>
                                     <td className="py-2 px-2 sm:px-4 text-center no-print">
-                                        <button onClick={() => handleRemoveLineItem(index)} className="text-red-500 hover:text-red-700">
+                                        <button onClick={() => handleRemoveLineItem(index)} className="text-red-500 hover:text-red-700 p-1">
                                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 sm:h-5 sm:w-5" viewBox="0 0 20 20" fill="currentColor">
                                                 <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" />
                                             </svg>
