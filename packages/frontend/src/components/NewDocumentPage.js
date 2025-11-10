@@ -171,7 +171,7 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
             taxRate: vatApplied ? 0.11 : 0,
             taxAmount: vatAmount,
             total,
-            type: docType,
+            type: docType.toUpperCase(),
         };
 
         try {
