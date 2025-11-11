@@ -180,7 +180,7 @@ router.put('/:id', async (req, res, next) => {
   try {
     const userId = req.user.id;
     const { id } = req.params;
-    const { items, mandays, realMandays, ...updateData } = req.body;
+    const { items, mandays, realMandays, clientId, clientName, ...updateData } = req.body;
 
     const existingDocument = await prisma.document.findFirst({
       where: { id, userId }
@@ -198,6 +198,19 @@ router.put('/:id', async (req, res, next) => {
         create: items
       } : undefined
     };
+
+    // Handle client relation update if clientId is provided
+    if (clientId !== undefined) {
+      if (clientId) {
+        data.client = { connect: { id: clientId } };
+      } else {
+        data.client = { disconnect: true };
+      }
+      // Also update clientName if provided
+      if (clientName !== undefined) {
+        data.clientName = clientName;
+      }
+    }
 
     // Only include mandays if explicitly provided (allow null to clear)
     if (mandays !== undefined) {

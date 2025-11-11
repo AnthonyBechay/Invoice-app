@@ -335,10 +335,10 @@ const ProformasPage = ({ navigateTo }) => {
 
     const handleDeleteProforma = async (proformaId) => {
         if (!user) return;
-        
+
         try {
             await documentsAPI.update(proformaId, {
-                status: 'cancelled'
+                status: 'CANCELLED'
             });
             setConfirmDelete(null);
             await fetchProformas();
@@ -349,10 +349,10 @@ const ProformasPage = ({ navigateTo }) => {
 
     const handleRestoreProforma = async (proformaId) => {
         if (!user) return;
-        
+
         try {
             await documentsAPI.update(proformaId, {
-                status: 'draft'
+                status: 'DRAFT'
             });
             await fetchProformas();
         } catch (error) {

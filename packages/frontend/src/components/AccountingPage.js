@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { documentsAPI, paymentsAPI } from '../services/api';
 
 const AccountingPage = () => {
@@ -279,9 +279,9 @@ const AccountingPage = () => {
 
     const exportToCSV = () => {
         const headers = ['Date', 'Document #', 'Type', 'Status', 'Client', 'Items Revenue', 'Labor Revenue', 'Display Mandays', 'Real Mandays Cost', 'VAT', 'Total', 'Cost', 'Net Profit', 'Paid Amount', 'Collected Profit'];
-        const rows = getFilteredDocuments().map(doc => {
-            const itemsRevenue = doc.items ? doc.items.reduce((sum, item) => sum + (item.qty * item.unitPrice), 0) : 0;
-            const cost = doc.items ? doc.items.reduce((sum, item) => sum + (item.qty * (item.buyingPrice || 0)), 0) : 0;
+        const rows = getFilteredDocuments.map(doc => {
+            const itemsRevenue = doc.items ? doc.items.reduce((sum, item) => sum + ((item.quantity || 0) * (item.unitPrice || 0)), 0) : 0;
+            const cost = doc.items ? doc.items.reduce((sum, item) => sum + ((item.quantity || 0) * (item.buyingPrice || item.stock?.buyingPrice || 0)), 0) : 0;
 
             let displayMandaysRevenue = 0;
             if (doc.mandays && doc.mandays.days > 0) {
@@ -351,7 +351,7 @@ const AccountingPage = () => {
         }
     };
 
-    const getFilteredDocuments = () => {
+    const getFilteredDocuments = useMemo(() => {
         let filtered = [...documents];
 
         filtered.sort((a, b) => {
@@ -387,7 +387,7 @@ const AccountingPage = () => {
         });
 
         return filtered;
-    };
+    }, [documents, sortColumn, sortDirection]);
 
     if (loading) {
         return (
@@ -665,14 +665,14 @@ const AccountingPage = () => {
                     <div className="text-center p-4 bg-green-50 rounded-lg">
                         <h3 className="text-lg font-semibold text-green-700">Paid Documents</h3>
                         <p className="text-3xl font-bold text-green-600 mt-2">
-                            {getFilteredDocuments().filter(doc => (doc.totalPaid || 0) >= doc.total).length}
+                            {getFilteredDocuments.filter(doc => (doc.totalPaid || 0) >= doc.total).length}
                         </p>
                         <p className="text-sm text-gray-600 mt-1">Fully paid</p>
                     </div>
                     <div className="text-center p-4 bg-orange-50 rounded-lg">
                         <h3 className="text-lg font-semibold text-orange-700">Unpaid Documents</h3>
                         <p className="text-3xl font-bold text-orange-600 mt-2">
-                            {getFilteredDocuments().filter(doc => (doc.totalPaid || 0) < doc.total).length}
+                            {getFilteredDocuments.filter(doc => (doc.totalPaid || 0) < doc.total).length}
                         </p>
                         <p className="text-sm text-gray-600 mt-1">Outstanding</p>
                     </div>
@@ -683,7 +683,7 @@ const AccountingPage = () => {
             <div className="bg-white p-6 rounded-lg shadow-lg">
                 <h2 className="text-xl font-semibold text-gray-700 mb-4">Transaction Details</h2>
                 <div className="overflow-x-auto">
-                    {getFilteredDocuments().length === 0 ? (
+                    {getFilteredDocuments.length === 0 ? (
                         <div className="text-center py-8">
                             <p className="text-gray-500 text-lg">No transactions found for the selected filters.</p>
                             <p className="text-gray-400 text-sm mt-2">Try adjusting your filter criteria to see more results.</p>
@@ -728,9 +728,9 @@ const AccountingPage = () => {
                                 </tr>
                             </thead>
                             <tbody className="text-gray-600 text-sm">
-                                {getFilteredDocuments().map(doc => {
-                                    const itemsRevenue = doc.items ? doc.items.reduce((sum, item) => sum + (item.qty * item.unitPrice), 0) : 0;
-                                    const cost = doc.items ? doc.items.reduce((sum, item) => sum + (item.qty * (item.buyingPrice || 0)), 0) : 0;
+                                {getFilteredDocuments.map(doc => {
+                                    const itemsRevenue = doc.items ? doc.items.reduce((sum, item) => sum + ((item.quantity || 0) * (item.unitPrice || 0)), 0) : 0;
+                                    const cost = doc.items ? doc.items.reduce((sum, item) => sum + ((item.quantity || 0) * (item.buyingPrice || item.stock?.buyingPrice || 0)), 0) : 0;
 
                                     let displayMandaysRevenue = 0;
                                     if (doc.mandays && doc.mandays.days > 0) {

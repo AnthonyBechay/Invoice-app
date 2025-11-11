@@ -93,7 +93,7 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
 
     const handleAddItemToList = (item) => {
         if (item) {
-            setLineItems([...lineItems, { ...item, itemId: item.id, qty: 1, unitPrice: item.sellingPrice }]);
+            setLineItems([...lineItems, { ...item, itemId: item.id, quantity: 1, unitPrice: item.sellingPrice }]);
             setItemSearch('');
             setSelectedStockItem('');
             setIsItemDropdownVisible(false);
@@ -122,7 +122,7 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
     };
 
     const calculateSubtotal = () => {
-        const itemsTotal = lineItems.reduce((acc, item) => acc + (item.qty * item.unitPrice), 0);
+        const itemsTotal = lineItems.reduce((acc, item) => acc + ((item.quantity || 0) * (item.unitPrice || 0)), 0);
         const mandaysCost = showMandays ? calculateMandalsCost() : 0;
         return itemsTotal + parseFloat(laborPrice || 0) + mandaysCost;
     };
@@ -327,8 +327,8 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
                                     <td className="py-2 px-2 sm:px-4 text-center">
                                         <input
                                             type="number"
-                                            value={item.qty}
-                                            onChange={(e) => handleLineItemChange(index, 'qty', e.target.value)}
+                                            value={item.quantity}
+                                            onChange={(e) => handleLineItemChange(index, 'quantity', e.target.value)}
                                             className="w-16 sm:w-20 p-1 border border-gray-300 rounded-md text-xs sm:text-sm text-center"
                                             min="0"
                                             step="0.01"
@@ -352,15 +352,15 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
                                                 step="0.01"
                                             />
                                         </div>
-                                        {item.buyingPrice > 0 && item.unitPrice > 0 && (
+                                        {item.buyingPrice > 0 && item.unitPrice > 0 && item.quantity > 0 && (
                                             <div className="text-xs mt-1">
                                                 {item.unitPrice > item.buyingPrice ? (
                                                     <span className="text-green-600">
-                                                        +${(item.unitPrice - item.buyingPrice).toFixed(2)} profit
+                                                        +${((item.unitPrice - item.buyingPrice) * (item.quantity || 0)).toFixed(2)} profit
                                                     </span>
                                                 ) : item.unitPrice < item.buyingPrice ? (
                                                     <span className="text-red-600">
-                                                        -${(item.buyingPrice - item.unitPrice).toFixed(2)} loss
+                                                        -${((item.buyingPrice - item.unitPrice) * (item.quantity || 0)).toFixed(2)} loss
                                                     </span>
                                                 ) : (
                                                     <span className="text-gray-500">No margin</span>
@@ -369,7 +369,7 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
                                         )}
                                     </td>
                                     <td className="py-2 px-2 sm:px-4 text-right font-semibold text-xs sm:text-sm text-gray-800">
-                                        ${(item.qty * item.unitPrice).toFixed(2)}
+                                        ${((item.quantity || 0) * (item.unitPrice || 0)).toFixed(2)}
                                     </td>
                                     <td className="py-2 px-2 sm:px-4 text-center no-print">
                                         <button onClick={() => handleRemoveLineItem(index)} className="text-red-500 hover:text-red-700 p-1">

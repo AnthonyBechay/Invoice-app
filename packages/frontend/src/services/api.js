@@ -76,6 +76,13 @@ export const authAPI = {
   getCurrentUser: async () => {
     return apiRequest('/auth/me');
   },
+
+  updatePassword: async (currentPassword, newPassword) => {
+    return apiRequest('/auth/update-password', {
+      method: 'PUT',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+  },
 };
 
 // Clients API

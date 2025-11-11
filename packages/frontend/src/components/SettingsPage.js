@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { settingsAPI } from '../services/api';
+import { settingsAPI, authAPI } from '../services/api';
 
 const SettingsPage = () => {
     const [companyName, setCompanyName] = useState('');
@@ -15,6 +15,13 @@ const SettingsPage = () => {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [feedback, setFeedback] = useState({ type: '', message: '' });
+
+    // Password update state
+    const [currentPassword, setCurrentPassword] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [updatingPassword, setUpdatingPassword] = useState(false);
+    const [passwordFeedback, setPasswordFeedback] = useState({ type: '', message: '' });
 
     useEffect(() => {
         fetchSettings();
@@ -107,6 +114,39 @@ const SettingsPage = () => {
             setFeedback({ type: 'error', message: 'Failed to save settings. Please try again.' });
         } finally {
             setSaving(false);
+        }
+    };
+
+    const handlePasswordUpdate = async (e) => {
+        e.preventDefault();
+        setPasswordFeedback({ type: '', message: '' });
+
+        // Validate passwords match
+        if (newPassword !== confirmPassword) {
+            setPasswordFeedback({ type: 'error', message: 'New passwords do not match.' });
+            return;
+        }
+
+        // Validate password length
+        if (newPassword.length < 6) {
+            setPasswordFeedback({ type: 'error', message: 'New password must be at least 6 characters.' });
+            return;
+        }
+
+        setUpdatingPassword(true);
+
+        try {
+            await authAPI.updatePassword(currentPassword, newPassword);
+            setPasswordFeedback({ type: 'success', message: 'Password updated successfully!' });
+            // Clear password fields
+            setCurrentPassword('');
+            setNewPassword('');
+            setConfirmPassword('');
+        } catch (error) {
+            console.error('Error updating password:', error);
+            setPasswordFeedback({ type: 'error', message: error.message || 'Failed to update password. Please check your current password.' });
+        } finally {
+            setUpdatingPassword(false);
         }
     };
 
@@ -328,6 +368,86 @@ const SettingsPage = () => {
                             : 'bg-red-100 text-red-800 border border-red-200'
                     }`}>
                         {feedback.message}
+                    </div>
+                )}
+            </div>
+
+            {/* Account Security Section */}
+            <div className="bg-white p-8 rounded-lg shadow-lg mt-6">
+                <h2 className="text-2xl font-bold text-gray-800 mb-6">Account Security</h2>
+
+                <form onSubmit={handlePasswordUpdate} className="space-y-6">
+                    <div className="border-b border-gray-200 pb-6">
+                        <h3 className="text-xl font-semibold text-gray-800 mb-4">Update Password</h3>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label htmlFor="currentPassword" className="block text-sm font-medium text-gray-700 mb-1">
+                                    Current Password *
+                                </label>
+                                <input
+                                    type="password"
+                                    id="currentPassword"
+                                    value={currentPassword}
+                                    onChange={(e) => setCurrentPassword(e.target.value)}
+                                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                                    placeholder="Enter your current password"
+                                    required
+                                />
+                            </div>
+
+                            <div>
+                                <label htmlFor="newPassword" className="block text-sm font-medium text-gray-700 mb-1">
+                                    New Password *
+                                </label>
+                                <input
+                                    type="password"
+                                    id="newPassword"
+                                    value={newPassword}
+                                    onChange={(e) => setNewPassword(e.target.value)}
+                                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                                    placeholder="Enter new password (min 6 characters)"
+                                    required
+                                    minLength={6}
+                                />
+                            </div>
+
+                            <div>
+                                <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-1">
+                                    Confirm New Password *
+                                </label>
+                                <input
+                                    type="password"
+                                    id="confirmPassword"
+                                    value={confirmPassword}
+                                    onChange={(e) => setConfirmPassword(e.target.value)}
+                                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                                    placeholder="Confirm new password"
+                                    required
+                                    minLength={6}
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="pt-4">
+                        <button
+                            type="submit"
+                            disabled={updatingPassword}
+                            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg shadow-md disabled:bg-indigo-300 disabled:cursor-not-allowed transition-colors"
+                        >
+                            {updatingPassword ? 'Updating Password...' : 'Update Password'}
+                        </button>
+                    </div>
+                </form>
+
+                {passwordFeedback.message && (
+                    <div className={`mt-6 p-4 rounded-md text-sm ${
+                        passwordFeedback.type === 'success'
+                            ? 'bg-green-100 text-green-800 border border-green-200'
+                            : 'bg-red-100 text-red-800 border border-red-200'
+                    }`}>
+                        {passwordFeedback.message}
                     </div>
                 )}
             </div>
