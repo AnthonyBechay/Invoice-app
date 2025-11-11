@@ -49,7 +49,24 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
             setDocType(documentToEdit.type);
             setSelectedClient(documentToEdit.clientId);
             setClientSearch(documentToEdit.clientName);
-            setLineItems(documentToEdit.items || []);
+
+            // Map items properly for editing - ensure all fields are present
+            const mappedItems = (documentToEdit.items || []).map(item => ({
+                ...item,
+                quantity: item.quantity || 0,
+                unitPrice: item.unitPrice || 0,
+                buyingPrice: item.buyingPrice || item.stock?.buyingPrice || 0,
+                // Preserve stock data if available
+                ...(item.stock && {
+                    partNumber: item.stock.partNumber,
+                    sku: item.stock.sku,
+                    brand: item.stock.brand,
+                    model: item.stock.model,
+                    specifications: item.stock.specifications
+                })
+            }));
+            setLineItems(mappedItems);
+
             setLaborPrice(documentToEdit.laborPrice || 0);
             setNotes(documentToEdit.notes || '');
             setVatApplied(documentToEdit.vatApplied || false);
@@ -93,7 +110,13 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
 
     const handleAddItemToList = (item) => {
         if (item) {
-            setLineItems([...lineItems, { ...item, itemId: item.id, quantity: 1, unitPrice: item.sellingPrice }]);
+            setLineItems([...lineItems, {
+                ...item,
+                itemId: item.id,
+                quantity: 1,
+                unitPrice: item.sellingPrice,
+                unit: item.unit || ''  // Include unit from stock item
+            }]);
             setItemSearch('');
             setSelectedStockItem('');
             setIsItemDropdownVisible(false);
@@ -150,12 +173,12 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
 
         // Clean items data - only send DocumentItem fields
         const cleanedItems = lineItems.map(item => ({
-            stockId: item.id || item.itemId || null,
+            stockId: item.id || item.itemId || item.stockId || null,
             name: item.name,
             description: item.description || '',
-            quantity: parseFloat(item.qty) || 0,
+            quantity: parseFloat(item.quantity) || 0,
             unitPrice: parseFloat(item.unitPrice) || 0,
-            total: (parseFloat(item.qty) || 0) * (parseFloat(item.unitPrice) || 0)
+            total: (parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0)
         }));
 
         const documentData = {
@@ -325,14 +348,19 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
                                         </div>
                                     </td>
                                     <td className="py-2 px-2 sm:px-4 text-center">
-                                        <input
-                                            type="number"
-                                            value={item.quantity}
-                                            onChange={(e) => handleLineItemChange(index, 'quantity', e.target.value)}
-                                            className="w-16 sm:w-20 p-1 border border-gray-300 rounded-md text-xs sm:text-sm text-center"
-                                            min="0"
-                                            step="0.01"
-                                        />
+                                        <div className="flex flex-col items-center gap-1">
+                                            <input
+                                                type="number"
+                                                value={item.quantity}
+                                                onChange={(e) => handleLineItemChange(index, 'quantity', e.target.value)}
+                                                className="w-16 sm:w-20 p-1 border border-gray-300 rounded-md text-xs sm:text-sm text-center"
+                                                min="0"
+                                                step="0.01"
+                                            />
+                                            {item.unit && (
+                                                <span className="text-xs text-gray-500">{item.unit}</span>
+                                            )}
+                                        </div>
                                     </td>
                                     <td className="py-2 px-2 sm:px-4 text-right buying-price-col">
                                         <div className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 rounded text-xs sm:text-sm text-gray-500">

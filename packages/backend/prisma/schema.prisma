@@ -21,6 +21,7 @@ model User {
 
   // Relations
   clients   Client[]
+  suppliers Supplier[]
   stock     Stock[]
   documents Document[]
   payments  Payment[]
@@ -29,6 +30,30 @@ model User {
   counters  Counter[]
 
   @@index([email])
+}
+
+// Supplier model
+model Supplier {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name        String
+  contactName String   @default("")
+  email       String   @default("")
+  phone       String   @default("")
+  address     String   @default("")
+  website     String   @default("")
+  notes       String   @default("")
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  stockItems  Stock[]
+
+  @@index([userId])
+  @@index([name])
 }
 
 // Client model
@@ -91,7 +116,9 @@ model Stock {
   color         String   @default("")
 
   // Additional Info
-  supplier      String   @default("")
+  supplierId    String?        // Foreign key to Supplier
+  supplier      Supplier?      @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  supplierName  String   @default("")  // Legacy field, kept for backward compatibility
   supplierCode  String   @default("")
   warranty      String   @default("")
   notes         String   @default("")
@@ -104,6 +131,7 @@ model Stock {
   documentItems DocumentItem[]
 
   @@index([userId])
+  @@index([supplierId])
   @@index([category])
   @@index([partNumber])
   @@index([sku])

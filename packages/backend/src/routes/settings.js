@@ -9,9 +9,26 @@ const router = express.Router();
 router.get('/', async (req, res, next) => {
   try {
     const userId = req.user.id;
+    const excludeLogo = req.query.excludeLogo === 'true';
 
+    // Select fields, optionally excluding logo for faster initial load
     const settings = await prisma.settings.findUnique({
-      where: { userId }
+      where: { userId },
+      select: {
+        id: true,
+        userId: true,
+        companyName: true,
+        companyAddress: true,
+        companyPhone: true,
+        companyEmail: true,
+        companyVatNumber: true,
+        logo: !excludeLogo, // Only include logo if not excluded
+        footerMessage: true,
+        taxRate: true,
+        currency: true,
+        createdAt: true,
+        updatedAt: true
+      }
     });
 
     if (!settings) {
@@ -22,6 +39,9 @@ router.get('/', async (req, res, next) => {
         companyAddress: '',
         companyPhone: '',
         companyEmail: '',
+        companyVatNumber: '',
+        logo: '',
+        footerMessage: 'Thank you for your business!',
         taxRate: 0,
         currency: 'USD'
       });

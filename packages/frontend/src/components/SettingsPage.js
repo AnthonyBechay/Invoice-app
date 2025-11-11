@@ -42,10 +42,10 @@ const SettingsPage = () => {
                 setTaxRate(settings.taxRate || 0);
                 setCurrency(settings.currency || 'USD');
             }
+            setLoading(false);
         } catch (error) {
             console.error('Error fetching settings:', error);
             setFeedback({ type: 'error', message: 'Failed to fetch settings.' });
-        } finally {
             setLoading(false);
         }
     };
@@ -54,9 +54,9 @@ const SettingsPage = () => {
         if (e.target.files[0]) {
             const file = e.target.files[0];
 
-            // Check file size (1MB limit for base64 storage)
-            if (file.size > 1 * 1024 * 1024) {
-                setFeedback({ type: 'error', message: 'File size must be less than 1MB' });
+            // Check file size (500KB limit for base64 storage to prevent slow loads)
+            if (file.size > 500 * 1024) {
+                setFeedback({ type: 'error', message: 'File size must be less than 500KB. Please compress your image.' });
                 return;
             }
 
@@ -194,7 +194,7 @@ const SettingsPage = () => {
                                     className="text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
                                 />
                                 <p className="text-xs text-gray-500 mt-2">
-                                    Max size: 1MB. Formats: PNG, JPG, GIF
+                                    Max size: 500KB. Formats: PNG, JPG, GIF. Please compress large images.
                                 </p>
                                 <p className="text-xs text-gray-400 mt-1">
                                     Your logo will appear on all invoices and proformas

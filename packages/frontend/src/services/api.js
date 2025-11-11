@@ -131,6 +131,41 @@ export const clientsAPI = {
   },
 };
 
+// Suppliers API
+export const suppliersAPI = {
+  getAll: async (search = '', limit = null) => {
+    const params = new URLSearchParams();
+    if (search) params.append('search', search);
+    if (limit) params.append('limit', limit);
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return apiRequest(`/suppliers${query}`);
+  },
+
+  getById: async (id) => {
+    return apiRequest(`/suppliers/${id}`);
+  },
+
+  create: async (supplierData) => {
+    return apiRequest('/suppliers', {
+      method: 'POST',
+      body: JSON.stringify(supplierData),
+    });
+  },
+
+  update: async (id, supplierData) => {
+    return apiRequest(`/suppliers/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(supplierData),
+    });
+  },
+
+  delete: async (id) => {
+    return apiRequest(`/suppliers/${id}`, {
+      method: 'DELETE',
+    });
+  },
+};
+
 // Stock API
 export const stockAPI = {
   getAll: async (search = '', limit = null) => {
@@ -315,6 +350,7 @@ export const settingsAPI = {
 export default {
   auth: authAPI,
   clients: clientsAPI,
+  suppliers: suppliersAPI,
   stock: stockAPI,
   documents: documentsAPI,
   payments: paymentsAPI,

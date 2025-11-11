@@ -11,6 +11,7 @@ import { errorHandler } from './middleware/errorHandler.js';
 // Import routes
 import authRoutes from './routes/auth.js';
 import clientsRoutes from './routes/clients.js';
+import suppliersRoutes from './routes/suppliers.js';
 import stockRoutes from './routes/stock.js';
 import documentsRoutes from './routes/documents.js';
 import paymentsRoutes from './routes/payments.js';
@@ -94,6 +95,7 @@ app.use('/api/auth', authRoutes);
 
 // Protected routes (require authentication)
 app.use('/api/clients', verifyToken, clientsRoutes);
+app.use('/api/suppliers', verifyToken, suppliersRoutes);
 app.use('/api/stock', verifyToken, stockRoutes);
 app.use('/api/documents', verifyToken, documentsRoutes);
 app.use('/api/payments', verifyToken, paymentsRoutes);
