@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { settingsAPI, authAPI } from '../services/api';
+import SuppliersManagement from './SuppliersManagement';
 
 const SettingsPage = () => {
+    const [activeTab, setActiveTab] = useState('company');
     const [companyName, setCompanyName] = useState('');
     const [companyAddress, setCompanyAddress] = useState('');
     const [companyPhone, setCompanyPhone] = useState('');
@@ -159,9 +161,47 @@ const SettingsPage = () => {
     }
 
     return (
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-6xl mx-auto">
             <h1 className="text-3xl font-bold text-gray-800 mb-6">Settings</h1>
 
+            {/* Tabs */}
+            <div className="mb-6 border-b border-gray-200">
+                <nav className="-mb-px flex space-x-8">
+                    <button
+                        onClick={() => setActiveTab('company')}
+                        className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                            activeTab === 'company'
+                                ? 'border-indigo-500 text-indigo-600'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        }`}
+                    >
+                        Company Settings
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('security')}
+                        className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                            activeTab === 'security'
+                                ? 'border-indigo-500 text-indigo-600'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        }`}
+                    >
+                        Security
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('lists')}
+                        className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                            activeTab === 'lists'
+                                ? 'border-indigo-500 text-indigo-600'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        }`}
+                    >
+                        List of Values
+                    </button>
+                </nav>
+            </div>
+
+            {/* Company Settings Tab */}
+            {activeTab === 'company' && (
             <div className="bg-white p-8 rounded-lg shadow-lg">
                 <form onSubmit={handleSave} className="space-y-6">
                     {/* Company Logo Section */}
@@ -371,9 +411,11 @@ const SettingsPage = () => {
                     </div>
                 )}
             </div>
+            )}
 
-            {/* Account Security Section */}
-            <div className="bg-white p-8 rounded-lg shadow-lg mt-6">
+            {/* Security Tab */}
+            {activeTab === 'security' && (
+            <div className="bg-white p-8 rounded-lg shadow-lg">
                 <h2 className="text-2xl font-bold text-gray-800 mb-6">Account Security</h2>
 
                 <form onSubmit={handlePasswordUpdate} className="space-y-6">
@@ -451,6 +493,14 @@ const SettingsPage = () => {
                     </div>
                 )}
             </div>
+            )}
+
+            {/* List of Values Tab */}
+            {activeTab === 'lists' && (
+            <div className="bg-white p-8 rounded-lg shadow-lg">
+                <SuppliersManagement />
+            </div>
+            )}
         </div>
     );
 };

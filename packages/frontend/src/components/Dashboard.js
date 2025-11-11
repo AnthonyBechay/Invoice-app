@@ -362,40 +362,127 @@ const Dashboard = ({ navigateTo }) => {
                 </div>
             </div>
 
-            {/* Recent Activity */}
-            <div className="bg-white p-6 rounded-lg shadow-lg">
-                <h2 className="text-xl font-semibold text-gray-700 mb-4">Recent Activity</h2>
-                <div className="overflow-x-auto">
-                    {recentDocuments.length === 0 ? (
-                        <p className="text-gray-500">No recent documents.</p>
-                    ) : (
-                        <table className="min-w-full bg-white">
-                            <thead className="bg-gray-200 text-gray-600 uppercase text-sm leading-normal">
-                                <tr>
-                                    <th className="py-3 px-6 text-left">Type</th>
-                                    <th className="py-3 px-6 text-left">Number</th>
-                                    <th className="py-3 px-6 text-left">Client</th>
-                                    <th className="py-3 px-6 text-center">Date</th>
-                                    <th className="py-3 px-6 text-right">Total</th>
-                                </tr>
-                            </thead>
-                            <tbody className="text-gray-600 text-sm font-light">
-                                {recentDocuments.map(doc => (
-                                    <tr key={doc.id} className="border-b border-gray-200 hover:bg-gray-100" onClick={() => navigateTo('viewDocument', doc)} style={{cursor: 'pointer'}}>
-                                        <td className="py-3 px-6 text-left whitespace-nowrap">
-                                            <span className={`py-1 px-3 rounded-full text-xs font-semibold ${doc.type === 'invoice' ? 'bg-green-200 text-green-700' : 'bg-yellow-200 text-yellow-700'}`}>
-                                                {doc.type}
-                                            </span>
-                                        </td>
-                                        <td className="py-3 px-6 text-left">{doc.documentNumber}</td>
-                                        <td className="py-3 px-6 text-left">{doc.clientName || 'Unknown Client'}</td>
-                                        <td className="py-3 px-6 text-center">{new Date(doc.date).toLocaleDateString()}</td>
-                                        <td className="py-3 px-6 text-right font-semibold">${doc.total.toFixed(2)}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    )}
+            {/* Business Insights */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Collection Rate & Payment Status */}
+                <div className="bg-white p-6 rounded-lg shadow-lg">
+                    <h2 className="text-xl font-semibold text-gray-700 mb-4">Payment Collection</h2>
+                    <div className="space-y-4">
+                        {(() => {
+                            const totalInvoiced = stats.invoicesTotal;
+                            const totalPaidFromInvoices = unpaidInvoices.reduce((sum, inv) => sum + (inv.totalPaid || 0), 0) +
+                                overdueInvoices.reduce((sum, inv) => sum + (inv.totalPaid || 0), 0);
+                            const totalOutstanding = unpaidInvoices.reduce((sum, inv) => sum + (inv.total - (inv.totalPaid || 0)), 0) +
+                                overdueInvoices.reduce((sum, inv) => sum + (inv.total - (inv.totalPaid || 0)), 0);
+                            const collectionRate = totalInvoiced > 0 ? ((totalPaidFromInvoices / totalInvoiced) * 100) : 0;
+
+                            return (
+                                <>
+                                    <div className="flex justify-between items-center p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg">
+                                        <div>
+                                            <p className="text-sm text-gray-600">Collection Rate</p>
+                                            <p className="text-2xl font-bold text-green-700">{collectionRate.toFixed(1)}%</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-xs text-gray-500">Collected</p>
+                                            <p className="text-lg font-semibold text-green-600">${totalPaidFromInvoices.toFixed(2)}</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="p-4 bg-orange-50 rounded-lg">
+                                            <p className="text-xs text-gray-600 mb-1">Outstanding</p>
+                                            <p className="text-xl font-bold text-orange-700">${totalOutstanding.toFixed(2)}</p>
+                                            <p className="text-xs text-gray-500 mt-1">{unpaidInvoices.length + overdueInvoices.length} invoices</p>
+                                        </div>
+                                        <div className="p-4 bg-red-50 rounded-lg">
+                                            <p className="text-xs text-gray-600 mb-1">Overdue</p>
+                                            <p className="text-xl font-bold text-red-700">{overdueInvoices.length}</p>
+                                            <p className="text-xs text-gray-500 mt-1">30+ days old</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="pt-4 border-t">
+                                        <button
+                                            onClick={() => navigateTo('invoices')}
+                                            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                                        >
+                                            View All Invoices
+                                        </button>
+                                    </div>
+                                </>
+                            );
+                        })()}
+                    </div>
+                </div>
+
+                {/* Quick Actions */}
+                <div className="bg-white p-6 rounded-lg shadow-lg">
+                    <h2 className="text-xl font-semibold text-gray-700 mb-4">Quick Actions</h2>
+                    <div className="grid grid-cols-2 gap-4">
+                        <button
+                            onClick={() => navigateTo('newDocument')}
+                            className="p-4 border-2 border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors group"
+                        >
+                            <div className="flex flex-col items-center text-center">
+                                <svg className="w-10 h-10 text-indigo-600 mb-2 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                <span className="text-sm font-medium text-gray-700">New Proforma</span>
+                            </div>
+                        </button>
+
+                        <button
+                            onClick={() => navigateTo('clients')}
+                            className="p-4 border-2 border-purple-200 rounded-lg hover:bg-purple-50 transition-colors group"
+                        >
+                            <div className="flex flex-col items-center text-center">
+                                <svg className="w-10 h-10 text-purple-600 mb-2 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                                </svg>
+                                <span className="text-sm font-medium text-gray-700">Manage Clients</span>
+                            </div>
+                        </button>
+
+                        <button
+                            onClick={() => navigateTo('payments')}
+                            className="p-4 border-2 border-green-200 rounded-lg hover:bg-green-50 transition-colors group"
+                        >
+                            <div className="flex flex-col items-center text-center">
+                                <svg className="w-10 h-10 text-green-600 mb-2 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                <span className="text-sm font-medium text-gray-700">Add Payment</span>
+                            </div>
+                        </button>
+
+                        <button
+                            onClick={() => navigateTo('accounting')}
+                            className="p-4 border-2 border-blue-200 rounded-lg hover:bg-blue-50 transition-colors group"
+                        >
+                            <div className="flex flex-col items-center text-center">
+                                <svg className="w-10 h-10 text-blue-600 mb-2 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                </svg>
+                                <span className="text-sm font-medium text-gray-700">View Reports</span>
+                            </div>
+                        </button>
+                    </div>
+
+                    <div className="mt-6 p-4 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-sm font-medium text-gray-700">Recent Documents</p>
+                                <p className="text-2xl font-bold text-indigo-700">{recentDocuments.length}</p>
+                            </div>
+                            <button
+                                onClick={() => navigateTo('proformas')}
+                                className="text-sm text-indigo-600 hover:text-indigo-800 font-medium"
+                            >
+                                View All →
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
