@@ -26,7 +26,7 @@ router.get('/', async (req, res, next) => {
         { partNumber: { contains: search, mode: 'insensitive' } },
         { sku: { contains: search, mode: 'insensitive' } },
         { specifications: { contains: search, mode: 'insensitive' } },
-        { supplier: { contains: search, mode: 'insensitive' } },
+        { supplierName: { contains: search, mode: 'insensitive' } },
         { notes: { contains: search, mode: 'insensitive' } }
       ];
     }
@@ -34,7 +34,10 @@ router.get('/', async (req, res, next) => {
     const items = await prisma.stock.findMany({
       where,
       take: limitParam ? parseInt(limitParam) : undefined,
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
+      include: {
+        supplier: true  // Include supplier relation
+      }
     });
 
     res.json(items);
@@ -55,6 +58,9 @@ router.get('/:id', async (req, res, next) => {
       where: {
         id,
         userId
+      },
+      include: {
+        supplier: true  // Include supplier relation
       }
     });
 
@@ -103,10 +109,14 @@ router.post('/', async (req, res, next) => {
         size: data.size || '',
         weight: data.weight || '',
         color: data.color || '',
-        supplier: data.supplier || '',
+        supplierId: data.supplierId || null,  // Use supplierId for relation
+        supplierName: data.supplier || data.supplierName || '',  // Legacy field
         supplierCode: data.supplierCode || '',
         warranty: data.warranty || '',
         notes: data.notes || ''
+      },
+      include: {
+        supplier: true  // Include supplier relation in response
       }
     });
 
@@ -155,14 +165,19 @@ router.put('/:id', async (req, res, next) => {
     if (data.size !== undefined) updateData.size = data.size;
     if (data.weight !== undefined) updateData.weight = data.weight;
     if (data.color !== undefined) updateData.color = data.color;
-    if (data.supplier !== undefined) updateData.supplier = data.supplier;
+    if (data.supplierId !== undefined) updateData.supplierId = data.supplierId;  // Use supplierId for relation
+    if (data.supplier !== undefined) updateData.supplierName = data.supplier;  // Legacy field
+    if (data.supplierName !== undefined) updateData.supplierName = data.supplierName;  // Legacy field
     if (data.supplierCode !== undefined) updateData.supplierCode = data.supplierCode;
     if (data.warranty !== undefined) updateData.warranty = data.warranty;
     if (data.notes !== undefined) updateData.notes = data.notes;
 
     const updated = await prisma.stock.update({
       where: { id },
-      data: updateData
+      data: updateData,
+      include: {
+        supplier: true  // Include supplier relation in response
+      }
     });
 
     res.json(updated);

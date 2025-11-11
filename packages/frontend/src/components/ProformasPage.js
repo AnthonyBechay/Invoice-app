@@ -336,10 +336,12 @@ const ProformasPage = ({ navigateTo }) => {
     const handleDeleteProforma = async (proformaId) => {
         if (!user) return;
 
+        if (!window.confirm('Are you sure you want to delete this proforma? This action cannot be undone.')) {
+            return;
+        }
+
         try {
-            await documentsAPI.update(proformaId, {
-                status: 'CANCELLED'
-            });
+            await documentsAPI.delete(proformaId);
             setConfirmDelete(null);
             await fetchProformas();
         } catch (error) {
