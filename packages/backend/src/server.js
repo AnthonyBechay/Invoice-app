@@ -42,14 +42,18 @@ const allowedOrigins = [
 const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (mobile apps, Postman, etc.)
-    if (!origin) return callback(null, true);
+    if (!origin) {
+      return callback(null, true);
+    }
 
-    // Check if origin is allowed
-    if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes('*')) {
+    // Check if origin is in allowed list
+    if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      console.log(`CORS blocked origin: ${origin}`);
-      callback(null, true); // Be permissive in production, log the issue
+      // Log for debugging
+      console.log(`CORS: Request from origin ${origin} - allowing (permissive mode)`);
+      // Allow all origins (permissive approach for production)
+      callback(null, true);
     }
   },
   credentials: true,
@@ -57,12 +61,14 @@ const corsOptions = {
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
   exposedHeaders: ['Content-Range', 'X-Content-Range'],
   optionsSuccessStatus: 200,
+  preflightContinue: false,
   maxAge: 86400 // 24 hours
 };
 
+// Apply CORS middleware - this handles both preflight and regular requests
 app.use(cors(corsOptions));
 
-// Handle preflight requests explicitly
+// Additional explicit OPTIONS handler as fallback (in case CORS middleware doesn't catch it)
 app.options('*', cors(corsOptions));
 
 // Body parsing middleware
