@@ -392,7 +392,7 @@ const PaymentsPage = () => {
         return documents.filter(doc => {
             const type = (doc.type || '').toLowerCase();
             const isInvoice = type === 'invoice' || type === 'invoices';
-            const isNotCancelled = doc.status !== 'cancelled' && doc.cancelled !== true && !doc.deleted;
+            const isNotCancelled = doc.status !== 'CANCELLED' && !doc.deleted;
             
             // Check if invoice is unpaid
             const totalPaid = payments

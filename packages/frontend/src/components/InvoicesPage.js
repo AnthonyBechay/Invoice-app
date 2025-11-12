@@ -84,11 +84,8 @@ const InvoicesPage = ({ navigateTo }) => {
                 if (doc.date) {
                     doc.date = new Date(doc.date);
                 }
-                if (doc.cancelledAt) {
-                    doc.cancelledAt = new Date(doc.cancelledAt);
-                }
 
-                if (doc.cancelled === true) {
+                if (doc.status === 'CANCELLED') {
                     cancelledDocs.push(doc);
                 } else {
                     activeDocs.push(doc);
@@ -124,8 +121,8 @@ const InvoicesPage = ({ navigateTo }) => {
             });
 
             cancelledDocs.sort((a, b) => {
-                const dateA = a.cancelledAt ? new Date(a.cancelledAt) : new Date();
-                const dateB = b.cancelledAt ? new Date(b.cancelledAt) : new Date();
+                const dateA = a.updatedAt ? new Date(a.updatedAt) : (a.createdAt ? new Date(a.createdAt) : new Date());
+                const dateB = b.updatedAt ? new Date(b.updatedAt) : (b.createdAt ? new Date(b.createdAt) : new Date());
                 return dateB - dateA;
             });
 
@@ -343,9 +340,7 @@ const InvoicesPage = ({ navigateTo }) => {
 
         try {
             await documentsAPI.update(invoiceId, {
-                cancelled: true,
-                cancelledAt: new Date().toISOString(),
-                paymentsMovedToClientAccount: movePaymentsToClientAccount
+                status: 'CANCELLED'
             });
 
             if (movePaymentsToClientAccount) {
@@ -383,8 +378,7 @@ const InvoicesPage = ({ navigateTo }) => {
     const handleRestoreInvoice = async (invoiceId) => {
         try {
             await documentsAPI.update(invoiceId, {
-                cancelled: false,
-                cancelledAt: null
+                status: 'DRAFT'
             });
 
             // Refresh data
@@ -508,10 +502,68 @@ const InvoicesPage = ({ navigateTo }) => {
                         results.data
                             .filter(row => row['Document Number'] && row['Document Number'].trim() !== '')
                             .map(async (row) => {
+                                // Parse items JSON - handle misaligned fields due to date splitting
                                 let items = [];
                                 try {
-                                    items = JSON.parse(row['Items JSON'] || '[]');
+                                    // Get all row values to find Items JSON even if misaligned
+                                    const allRowValues = Object.values(row);
+                                    let itemsJson = row['Items JSON'] || '';
+                                    
+                                    // If Items JSON doesn't look like JSON (might be misaligned), search all fields
+                                    if (!itemsJson.trim().startsWith('[') && !itemsJson.trim().startsWith('{')) {
+                                        // Search through all fields to find the one containing JSON array
+                                        for (const fieldValue of allRowValues) {
+                                            if (fieldValue && typeof fieldValue === 'string') {
+                                                const trimmed = fieldValue.trim();
+                                                // Check if this looks like a JSON array with items
+                                                if ((trimmed.startsWith('[') || trimmed.includes('name') || trimmed.includes('qty') || trimmed.includes('unitPrice')) &&
+                                                    (trimmed.includes('name') || trimmed.includes('qty') || trimmed.includes('unitPrice'))) {
+                                                    itemsJson = trimmed;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Clean up the JSON string
+                                    itemsJson = itemsJson.trim();
+                                    // Remove surrounding quotes if present
+                                    if ((itemsJson.startsWith('"') && itemsJson.endsWith('"')) || 
+                                        (itemsJson.startsWith("'") && itemsJson.endsWith("'"))) {
+                                        itemsJson = itemsJson.slice(1, -1);
+                                    }
+                                    // Replace escaped quotes
+                                    itemsJson = itemsJson.replace(/""/g, '"');
+                                    
+                                    // Try to parse as JSON
+                                    if (itemsJson && itemsJson.startsWith('[')) {
+                                        items = JSON.parse(itemsJson);
+                                    } else if (itemsJson && itemsJson.includes('name')) {
+                                        // Try to fix common JSON issues - handle unquoted keys
+                                        // Pattern: {name:value,qty:1,unitPrice:2} -> {"name":"value","qty":1,"unitPrice":2}
+                                        // First, ensure it's wrapped in array brackets if not
+                                        if (!itemsJson.startsWith('[')) {
+                                            itemsJson = '[' + itemsJson + ']';
+                                        }
+                                        // Fix unquoted keys and values
+                                        itemsJson = itemsJson.replace(/([{,]\s*)(\w+):/g, '$1"$2":');
+                                        // Fix unquoted string values (but not numbers)
+                                        itemsJson = itemsJson.replace(/:\s*([^",\d\s][^,}]*?)([,}])/g, (match, value, end) => {
+                                            // If value is not a number and not already quoted
+                                            if (isNaN(parseFloat(value.trim()))) {
+                                                return ': "' + value.trim() + '"' + end;
+                                            }
+                                            return match;
+                                        });
+                                        items = JSON.parse(itemsJson);
+                                    }
+                                    
+                                    // Ensure items is an array
+                                    if (!Array.isArray(items)) {
+                                        items = [];
+                                    }
                                 } catch (e) {
+                                    console.warn('Error parsing items JSON:', e, 'Raw value:', row['Items JSON'], 'All row values:', Object.values(row));
                                     items = [];
                                 }
 
@@ -999,7 +1051,7 @@ const InvoicesPage = ({ navigateTo }) => {
                                                 <td className="py-3 px-6 text-left">{doc.client.name}</td>
                                                 <td className="py-3 px-6 text-center">{(doc.date instanceof Date ? doc.date : new Date(doc.date)).toLocaleDateString()}</td>
                                                 <td className="py-3 px-6 text-center">
-                                                    {doc.cancelledAt ? (doc.cancelledAt instanceof Date ? doc.cancelledAt : new Date(doc.cancelledAt)).toLocaleDateString() : 'Unknown'}
+                                                    {doc.updatedAt ? (doc.updatedAt instanceof Date ? doc.updatedAt : new Date(doc.updatedAt)).toLocaleDateString() : (doc.createdAt ? (doc.createdAt instanceof Date ? doc.createdAt : new Date(doc.createdAt)).toLocaleDateString() : 'Unknown')}
                                                 </td>
                                                 <td className="py-3 px-6 text-right font-semibold">${doc.total.toFixed(2)}</td>
                                                 <td className="py-3 px-6 text-center">
@@ -1017,7 +1069,11 @@ const InvoicesPage = ({ navigateTo }) => {
                                                             Restore
                                                         </button>
                                                         <button
-                                                            onClick={() => handlePermanentDelete(doc.id)}
+                                                            onClick={() => {
+                                                                if (window.confirm('Are you sure you want to permanently delete this invoice? This action cannot be undone and will remove it from the database.')) {
+                                                                    handlePermanentDelete(doc.id);
+                                                                }
+                                                            }}
                                                             className="text-red-600 hover:text-red-800 font-medium py-1 px-2 rounded-lg text-sm"
                                                         >
                                                             Delete Permanently

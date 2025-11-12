@@ -8,10 +8,10 @@ import Papa from 'papaparse';
 const ProformasPage = ({ navigateTo }) => {
     const { user } = useAuth();
     const [proformas, setProformas] = useState([]);
-    const [deletedProformas, setDeletedProformas] = useState([]);
+    const [cancelledProformas, setCancelledProformas] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showHistoryModal, setShowHistoryModal] = useState(false);
-    const [showDeletedModal, setShowDeletedModal] = useState(false);
+    const [showCancelledModal, setShowCancelledModal] = useState(false);
     const [historyInvoices, setHistoryInvoices] = useState([]);
     const [historyLoading, setHistoryLoading] = useState(false);
     const [lastVisible, setLastVisible] = useState(null);
@@ -40,7 +40,7 @@ const ProformasPage = ({ navigateTo }) => {
             console.log("ProformasPage: Received", allProformas.length, "documents");
 
             const activeDocs = [];
-            const deletedDocs = [];
+            const cancelledDocs = [];
 
             allProformas.forEach((doc) => {
                 // Check if it's converted to invoice - exclude from all lists to avoid double counting
@@ -49,8 +49,8 @@ const ProformasPage = ({ navigateTo }) => {
                     return;
                 }
 
-                if (doc.deleted === true || doc.cancelled === true || doc.status === 'CANCELLED') {
-                    deletedDocs.push(doc);
+                if (doc.status === 'CANCELLED') {
+                    cancelledDocs.push(doc);
                 } else {
                     activeDocs.push(doc);
                 }
@@ -62,15 +62,15 @@ const ProformasPage = ({ navigateTo }) => {
                 const dateB = new Date(b.date);
                 return dateB - dateA;
             });
-            deletedDocs.sort((a, b) => {
-                const dateA = a.deletedAt ? new Date(a.deletedAt) : new Date();
-                const dateB = b.deletedAt ? new Date(b.deletedAt) : new Date();
+            cancelledDocs.sort((a, b) => {
+                const dateA = a.updatedAt ? new Date(a.updatedAt) : (a.createdAt ? new Date(a.createdAt) : new Date());
+                const dateB = b.updatedAt ? new Date(b.updatedAt) : (b.createdAt ? new Date(b.createdAt) : new Date());
                 return dateB - dateA;
             });
 
-            console.log("ProformasPage: Setting proformas - active:", activeDocs.length, "deleted:", deletedDocs.length);
+            console.log("ProformasPage: Setting proformas - active:", activeDocs.length, "cancelled:", cancelledDocs.length);
             setProformas(activeDocs);
-            setDeletedProformas(deletedDocs);
+            setCancelledProformas(cancelledDocs);
         } catch (error) {
             console.error("ProformasPage: Error fetching proformas:", error);
         } finally {
@@ -204,11 +204,68 @@ const ProformasPage = ({ navigateTo }) => {
                         results.data
                             .filter(row => row['Document Number'] && row['Document Number'].trim() !== '')
                             .map(async (row) => {
-                                // Parse items JSON
+                                // Parse items JSON - handle misaligned fields due to date splitting
                                 let items = [];
                                 try {
-                                    items = JSON.parse(row['Items JSON'] || '[]');
+                                    // Get all row values to find Items JSON even if misaligned
+                                    const allRowValues = Object.values(row);
+                                    let itemsJson = row['Items JSON'] || '';
+                                    
+                                    // If Items JSON doesn't look like JSON (might be misaligned), search all fields
+                                    if (!itemsJson.trim().startsWith('[') && !itemsJson.trim().startsWith('{')) {
+                                        // Search through all fields to find the one containing JSON array
+                                        for (const fieldValue of allRowValues) {
+                                            if (fieldValue && typeof fieldValue === 'string') {
+                                                const trimmed = fieldValue.trim();
+                                                // Check if this looks like a JSON array with items
+                                                if ((trimmed.startsWith('[') || trimmed.includes('name') || trimmed.includes('qty') || trimmed.includes('unitPrice')) &&
+                                                    (trimmed.includes('name') || trimmed.includes('qty') || trimmed.includes('unitPrice'))) {
+                                                    itemsJson = trimmed;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Clean up the JSON string
+                                    itemsJson = itemsJson.trim();
+                                    // Remove surrounding quotes if present
+                                    if ((itemsJson.startsWith('"') && itemsJson.endsWith('"')) || 
+                                        (itemsJson.startsWith("'") && itemsJson.endsWith("'"))) {
+                                        itemsJson = itemsJson.slice(1, -1);
+                                    }
+                                    // Replace escaped quotes
+                                    itemsJson = itemsJson.replace(/""/g, '"');
+                                    
+                                    // Try to parse as JSON
+                                    if (itemsJson && itemsJson.startsWith('[')) {
+                                        items = JSON.parse(itemsJson);
+                                    } else if (itemsJson && itemsJson.includes('name')) {
+                                        // Try to fix common JSON issues - handle unquoted keys
+                                        // Pattern: {name:value,qty:1,unitPrice:2} -> {"name":"value","qty":1,"unitPrice":2}
+                                        // First, ensure it's wrapped in array brackets if not
+                                        if (!itemsJson.startsWith('[')) {
+                                            itemsJson = '[' + itemsJson + ']';
+                                        }
+                                        // Fix unquoted keys and values
+                                        itemsJson = itemsJson.replace(/([{,]\s*)(\w+):/g, '$1"$2":');
+                                        // Fix unquoted string values (but not numbers)
+                                        itemsJson = itemsJson.replace(/:\s*([^",\d\s][^,}]*?)([,}])/g, (match, value, end) => {
+                                            // If value is not a number and not already quoted
+                                            if (isNaN(parseFloat(value.trim()))) {
+                                                return ': "' + value.trim() + '"' + end;
+                                            }
+                                            return match;
+                                        });
+                                        items = JSON.parse(itemsJson);
+                                    }
+                                    
+                                    // Ensure items is an array
+                                    if (!Array.isArray(items)) {
+                                        items = [];
+                                    }
                                 } catch (e) {
+                                    console.warn('Error parsing items JSON:', e, 'Raw value:', row['Items JSON'], 'All row values:', Object.values(row));
                                     items = [];
                                 }
 
@@ -475,7 +532,7 @@ const ProformasPage = ({ navigateTo }) => {
             return;
         }
 
-        if (!window.confirm('Are you sure you want to delete this proforma? This action cannot be undone.')) {
+        if (!window.confirm('Are you sure you want to cancel this proforma? You can restore it later from the cancelled proformas.')) {
             return;
         }
 
@@ -483,12 +540,15 @@ const ProformasPage = ({ navigateTo }) => {
         setLoading(true);
 
         try {
-            await documentsAPI.delete(proformaId);
+            // Cancel the proforma (set status to CANCELLED) instead of deleting
+            await documentsAPI.update(proformaId, {
+                status: 'CANCELLED'
+            });
             setConfirmDelete(null);
             await fetchProformas();
         } catch (error) {
-            console.error("Error deleting proforma: ", error);
-            alert('Error deleting proforma. Please try again.');
+            console.error("Error cancelling proforma: ", error);
+            alert('Error cancelling proforma. Please try again.');
         } finally {
             setLoading(false);
             setDeletingProformaIds(prev => {
@@ -515,11 +575,17 @@ const ProformasPage = ({ navigateTo }) => {
     const handlePermanentDelete = async (proformaId) => {
         if (!user) return;
         
+        if (!window.confirm('Are you sure you want to permanently delete this proforma? This action cannot be undone and will remove it from the database.')) {
+            return;
+        }
+        
         try {
             await documentsAPI.delete(proformaId);
             await fetchProformas();
+            alert('Proforma permanently deleted.');
         } catch (error) {
             console.error("Error permanently deleting proforma: ", error);
+            alert('Error deleting proforma. Please try again.');
         }
     };
 
@@ -588,10 +654,10 @@ const ProformasPage = ({ navigateTo }) => {
                         className="hidden"
                     />
                     <button
-                        onClick={() => setShowDeletedModal(true)}
-                        className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors"
+                        onClick={() => setShowCancelledModal(true)}
+                        className="bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors"
                     >
-                        Cancelled ({deletedProformas.length})
+                        Cancelled ({cancelledProformas.length})
                     </button>
                 </div>
             </div>
@@ -753,8 +819,8 @@ const ProformasPage = ({ navigateTo }) => {
             {confirmDelete && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
                     <div className="bg-white rounded-lg shadow-2xl p-6 max-w-md">
-                        <h3 className="text-lg font-bold mb-4">Confirm Delete</h3>
-                        <p className="mb-6">Are you sure you want to delete this proforma? You can restore it later from the deleted items.</p>
+                        <h3 className="text-lg font-bold mb-4">Confirm Cancel</h3>
+                        <p className="mb-6">Are you sure you want to cancel this proforma? You can restore it later from the cancelled proformas.</p>
                         <div className="flex justify-end gap-2">
                             <button
                                 onClick={() => setConfirmDelete(null)}
@@ -774,54 +840,66 @@ const ProformasPage = ({ navigateTo }) => {
                 </div>
             )}
 
-            {/* Deleted Proformas Modal */}
-            {showDeletedModal && (
+            {/* Cancelled Proformas Modal */}
+            {showCancelledModal && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
                     <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-full flex flex-col">
                         <div className="flex justify-between items-center p-4 border-b">
                             <h2 className="text-xl font-bold">Cancelled Proformas</h2>
-                            <button onClick={() => setShowDeletedModal(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
+                            <button onClick={() => setShowCancelledModal(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
                                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
                                 </svg>
                             </button>
                         </div>
                         <div className="overflow-y-auto flex-grow p-4">
-                            {deletedProformas.length === 0 ? (
-                                <p className="text-gray-500">No deleted proformas.</p>
+                            {cancelledProformas.length === 0 ? (
+                                <p className="text-gray-500">No cancelled proformas.</p>
                             ) : (
                                 <table className="min-w-full bg-white">
                                     <thead className="bg-gray-200 text-gray-600 uppercase text-sm leading-normal">
                                         <tr>
                                             <th className="py-3 px-6 text-left">Number</th>
                                             <th className="py-3 px-6 text-left">Client</th>
-                                            <th className="py-3 px-6 text-center">Deleted On</th>
+                                            <th className="py-3 px-6 text-center">Date</th>
+                                            <th className="py-3 px-6 text-center">Cancelled On</th>
                                             <th className="py-3 px-6 text-right">Total</th>
                                             <th className="py-3 px-6 text-center">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody className="text-gray-600 text-sm font-light">
-                                        {deletedProformas.map(doc => (
+                                        {cancelledProformas.map(doc => (
                                             <tr key={doc.id} className="border-b border-gray-200 hover:bg-gray-100">
                                                 <td className="py-3 px-6 text-left">{doc.documentNumber}</td>
-                                                <td className="py-3 px-6 text-left">{doc.client.name}</td>
+                                                <td className="py-3 px-6 text-left">{doc.client?.name || doc.clientName || 'N/A'}</td>
                                                 <td className="py-3 px-6 text-center">
-                                                    {doc.deletedAt ? new Date(doc.deletedAt).toLocaleDateString() : 'Unknown'}
+                                                    {(doc.date instanceof Date ? doc.date : new Date(doc.date)).toLocaleDateString()}
+                                                </td>
+                                                <td className="py-3 px-6 text-center">
+                                                    {doc.updatedAt ? (doc.updatedAt instanceof Date ? doc.updatedAt : new Date(doc.updatedAt)).toLocaleDateString() : (doc.createdAt ? (doc.createdAt instanceof Date ? doc.createdAt : new Date(doc.createdAt)).toLocaleDateString() : 'Unknown')}
                                                 </td>
                                                 <td className="py-3 px-6 text-right font-semibold">${doc.total.toFixed(2)}</td>
                                                 <td className="py-3 px-6 text-center">
                                                     <div className="flex item-center justify-center gap-2">
                                                         <button
-                                                            onClick={() => handleRestoreProforma(doc.id)}
+                                                            onClick={() => {
+                                                                handleRestoreProforma(doc.id);
+                                                                setShowCancelledModal(false);
+                                                            }}
                                                             className="text-green-600 hover:text-green-800 font-medium py-1 px-2 rounded-lg text-sm"
                                                         >
                                                             Restore
                                                         </button>
                                                         <button
-                                                            onClick={() => handlePermanentDelete(doc.id)}
+                                                            onClick={() => {
+                                                                if (window.confirm('Are you sure you want to permanently delete this proforma? This action cannot be undone.')) {
+                                                                    handlePermanentDelete(doc.id);
+                                                                    setShowCancelledModal(false);
+                                                                }
+                                                            }}
                                                             className="text-red-600 hover:text-red-800 font-medium py-1 px-2 rounded-lg text-sm"
                                                         >
-                                                            Permanent Delete
+                                                            Delete Permanently
                                                         </button>
                                                     </div>
                                                 </td>
@@ -834,6 +912,7 @@ const ProformasPage = ({ navigateTo }) => {
                     </div>
                 </div>
             )}
+
 
             {/* Invoice History Modal */}
             {showHistoryModal && (

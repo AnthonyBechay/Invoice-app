@@ -101,9 +101,8 @@ const Dashboard = ({ navigateTo }) => {
                 const docDate = new Date(doc.date);
                 return docDate >= dateRange.start &&
                        docDate <= dateRange.end &&
-                       doc.status !== 'cancelled' &&
-                       !doc.deleted &&
-                       doc.cancelled !== true;
+                       doc.status !== 'CANCELLED' &&
+                       !doc.deleted;
             });
 
             // Filter active documents only (not converted proformas)
@@ -130,9 +129,8 @@ const Dashboard = ({ navigateTo }) => {
 
             // For follow-up, use ALL documents (not filtered by date range) but exclude cancelled/deleted
             const allActiveDocs = allDocuments.filter(doc => {
-                return doc.status !== 'cancelled' &&
-                       !doc.deleted &&
-                       doc.cancelled !== true;
+                return doc.status !== 'CANCELLED' &&
+                       !doc.deleted;
             });
 
             const allProformas = allActiveDocs.filter(d => {
