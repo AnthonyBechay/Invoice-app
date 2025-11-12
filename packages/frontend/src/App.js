@@ -14,6 +14,7 @@ import SettingsPage from './components/SettingsPage';
 import AccountingPage from './components/AccountingPage';
 import PaymentsPage from './components/PaymentsPage';
 import ExpensesPage from './components/ExpensesPage';
+import AdminPage from './components/AdminPage';
 import Sidebar from './components/Sidebar';
 
 function AppContent() {
@@ -85,7 +86,8 @@ function AppContent() {
                             {page === 'clients' && <ClientsPage />}
                             {page === 'newDocument' && <NewDocumentPage navigateTo={navigateTo} documentToEdit={editingDocument} />}
                             {page === 'viewDocument' && <ViewDocumentPage documentToView={editingDocument} navigateTo={navigateTo} previousPage={previousPage} />}
-                            {page === 'settings' && <SettingsPage />}
+                            {page === 'settings' && <SettingsPage navigateTo={navigateTo} />}
+                            {page === 'admin' && <AdminPage />}
                             {page === 'accounting' && <AccountingPage />}
                         </ErrorBoundary>
                     </main>

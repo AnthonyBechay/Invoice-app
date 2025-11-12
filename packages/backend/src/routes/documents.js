@@ -1,15 +1,27 @@
 import express from 'express';
 import { prisma } from '../config/database.js';
+import { clearCacheOnMutation } from '../middleware/cache.js';
 
 const router = express.Router();
 
+// Clear cache on document mutations
+router.use(clearCacheOnMutation('documents'));
+
 /**
  * Get all documents (proformas and invoices) for a user
+ * Supports pagination with page and limit query params
  */
 router.get('/', async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const { type, limit: limitParam, search } = req.query;
+    const { 
+      type, 
+      limit: limitParam, 
+      page: pageParam, 
+      search,
+      status,
+      includeItems = 'false' // By default, don't include items for list view
+    } = req.query;
 
     const where = {
       userId
@@ -20,6 +32,10 @@ router.get('/', async (req, res, next) => {
       where.type = type.toUpperCase();
     }
 
+    if (status) {
+      where.status = status.toUpperCase();
+    }
+
     if (search) {
       where.OR = [
         { documentNumber: { contains: search, mode: 'insensitive' } },
@@ -27,21 +43,59 @@ router.get('/', async (req, res, next) => {
       ];
     }
 
+    // Pagination defaults
+    const page = pageParam ? Math.max(1, parseInt(pageParam)) : 1;
+    const limit = limitParam ? Math.min(100, Math.max(1, parseInt(limitParam))) : 50; // Default 50, max 100
+    const skip = (page - 1) * limit;
+
+    // Get total count for pagination metadata
+    const total = await prisma.document.count({ where });
+
+    // Build include object conditionally
+    const include = {
+      client: {
+        select: {
+          id: true,
+          name: true,
+          email: true
+        }
+      }
+    };
+
+    // Only include items if explicitly requested (for detail view)
+    if (includeItems === 'true') {
+      include.items = {
+        include: {
+          stock: {
+            select: {
+              id: true,
+              name: true,
+              sellingPrice: true
+            }
+          }
+        }
+      };
+    }
+
     const documents = await prisma.document.findMany({
       where,
-      take: limitParam ? parseInt(limitParam) : undefined,
+      take: limit,
+      skip,
       orderBy: { createdAt: 'desc' },
-      include: {
-        items: {
-          include: {
-            stock: true
-          }
-        },
-        client: true
-      }
+      include
     });
 
-    res.json(documents);
+    // Return paginated response
+    res.json({
+      data: documents,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasMore: page * limit < total
+      }
+    });
   } catch (error) {
     next(error);
   }

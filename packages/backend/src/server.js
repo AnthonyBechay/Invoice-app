@@ -7,6 +7,7 @@ import dotenv from 'dotenv';
 // Import middleware
 import { verifyToken } from './middleware/auth.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { cacheMiddleware } from './middleware/cache.js';
 
 // Import routes
 import authRoutes from './routes/auth.js';
@@ -17,6 +18,7 @@ import documentsRoutes from './routes/documents.js';
 import paymentsRoutes from './routes/payments.js';
 import expensesRoutes from './routes/expenses.js';
 import settingsRoutes from './routes/settings.js';
+import adminRoutes from './routes/admin.js';
 
 // Load environment variables
 dotenv.config();
@@ -100,13 +102,15 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 
 // Protected routes (require authentication)
-app.use('/api/clients', verifyToken, clientsRoutes);
-app.use('/api/suppliers', verifyToken, suppliersRoutes);
-app.use('/api/stock', verifyToken, stockRoutes);
-app.use('/api/documents', verifyToken, documentsRoutes);
-app.use('/api/payments', verifyToken, paymentsRoutes);
-app.use('/api/expenses', verifyToken, expensesRoutes);
-app.use('/api/settings', verifyToken, settingsRoutes);
+// Apply caching middleware to GET routes (5 minute cache)
+app.use('/api/clients', verifyToken, cacheMiddleware(300), clientsRoutes);
+app.use('/api/suppliers', verifyToken, cacheMiddleware(300), suppliersRoutes);
+app.use('/api/stock', verifyToken, cacheMiddleware(300), stockRoutes);
+app.use('/api/documents', verifyToken, cacheMiddleware(300), documentsRoutes);
+app.use('/api/payments', verifyToken, cacheMiddleware(300), paymentsRoutes);
+app.use('/api/expenses', verifyToken, cacheMiddleware(300), expensesRoutes);
+app.use('/api/settings', verifyToken, cacheMiddleware(300), settingsRoutes);
+app.use('/api/admin', verifyToken, adminRoutes); // No caching for admin routes
 
 // 404 handler
 app.use((req, res) => {

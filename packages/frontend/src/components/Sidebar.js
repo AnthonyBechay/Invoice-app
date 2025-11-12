@@ -33,6 +33,8 @@ const Sidebar = ({ navigateTo, currentPage, isOpen, setOpen }) => {
         setOpen(false); // Close sidebar on navigation
     };
 
+    const isAdmin = user?.email === 'anthonybechay1@gmail.com';
+    
     const navItems = [
         { name: 'Dashboard', page: 'dashboard' },
         { name: 'Proformas', page: 'proformas' },
@@ -43,6 +45,7 @@ const Sidebar = ({ navigateTo, currentPage, isOpen, setOpen }) => {
         { name: 'Clients', page: 'clients' },
         { name: 'Accounting', page: 'accounting' },
         { name: 'Settings', page: 'settings' },
+        ...(isAdmin ? [{ name: 'Admin', page: 'admin' }] : []),
     ];
 
     const sidebarClasses = `

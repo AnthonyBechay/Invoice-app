@@ -87,10 +87,11 @@ export const authAPI = {
 
 // Clients API
 export const clientsAPI = {
-  getAll: async (search = '', limit = null) => {
+  getAll: async (search = '', limit = 50, page = 1) => {
     const params = new URLSearchParams();
     if (search) params.append('search', search);
     if (limit) params.append('limit', limit);
+    if (page) params.append('page', page);
     const query = params.toString() ? `?${params.toString()}` : '';
     return apiRequest(`/clients${query}`);
   },
@@ -168,10 +169,11 @@ export const suppliersAPI = {
 
 // Stock API
 export const stockAPI = {
-  getAll: async (search = '', limit = null) => {
+  getAll: async (search = '', limit = 50, page = 1) => {
     const params = new URLSearchParams();
     if (search) params.append('search', search);
     if (limit) params.append('limit', limit);
+    if (page) params.append('page', page);
     const query = params.toString() ? `?${params.toString()}` : '';
     return apiRequest(`/stock${query}`);
   },
@@ -210,11 +212,14 @@ export const stockAPI = {
 
 // Documents API
 export const documentsAPI = {
-  getAll: async (type = null, status = null, limit = null) => {
+  getAll: async (type = null, status = null, limit = 50, page = 1, search = '', includeItems = false) => {
     const params = new URLSearchParams();
     if (type) params.append('type', type);
     if (status) params.append('status', status);
     if (limit) params.append('limit', limit);
+    if (page) params.append('page', page);
+    if (search) params.append('search', search);
+    if (includeItems) params.append('includeItems', 'true');
     const query = params.toString() ? `?${params.toString()}` : '';
     return apiRequest(`/documents${query}`);
   },
@@ -265,10 +270,12 @@ export const documentsAPI = {
 
 // Payments API
 export const paymentsAPI = {
-  getAll: async (clientId = null, limit = null) => {
+  getAll: async (clientId = null, limit = 50, page = 1, search = '') => {
     const params = new URLSearchParams();
     if (clientId) params.append('clientId', clientId);
     if (limit) params.append('limit', limit);
+    if (page) params.append('page', page);
+    if (search) params.append('search', search);
     const query = params.toString() ? `?${params.toString()}` : '';
     return apiRequest(`/payments${query}`);
   },
@@ -343,6 +350,34 @@ export const settingsAPI = {
     return apiRequest('/settings', {
       method: 'PUT',
       body: JSON.stringify(settingsData),
+    });
+  },
+};
+
+// Admin API
+export const adminAPI = {
+  getUsers: async () => {
+    return apiRequest('/admin/users');
+  },
+
+  getStats: async () => {
+    return apiRequest('/admin/stats');
+  },
+
+  getUserDetails: async (userId) => {
+    return apiRequest(`/admin/users/${userId}`);
+  },
+
+  updateUserPassword: async (userId, newPassword) => {
+    return apiRequest(`/admin/users/${userId}/password`, {
+      method: 'PUT',
+      body: JSON.stringify({ newPassword }),
+    });
+  },
+
+  deleteUser: async (userId) => {
+    return apiRequest(`/admin/users/${userId}?confirm=true`, {
+      method: 'DELETE',
     });
   },
 };

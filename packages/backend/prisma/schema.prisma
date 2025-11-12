@@ -78,6 +78,8 @@ model Client {
 
   @@index([userId])
   @@index([clientId])
+  @@index([userId, createdAt])
+  @@index([name])
 }
 
 // Stock/Inventory model
@@ -135,6 +137,8 @@ model Stock {
   @@index([category])
   @@index([partNumber])
   @@index([sku])
+  @@index([userId, createdAt])
+  @@index([name])
 }
 
 // Document type enum
@@ -197,6 +201,14 @@ model Document {
   @@index([type])
   @@index([documentNumber])
   @@index([clientId])
+  @@index([status])
+  @@index([userId, type])
+  @@index([userId, status])
+  @@index([userId, type, status])
+  @@index([date])
+  @@index([userId, date])
+  @@index([createdAt])
+  @@index([userId, createdAt])
 }
 
 // Document items (line items in documents)
@@ -246,6 +258,9 @@ model Payment {
   @@index([userId])
   @@index([documentId])
   @@index([clientId])
+  @@index([userId, createdAt])
+  @@index([paymentDate])
+  @@index([userId, paymentDate])
 }
 
 // Expense model
@@ -265,6 +280,8 @@ model Expense {
 
   @@index([userId])
   @@index([category])
+  @@index([userId, expenseDate])
+  @@index([expenseDate])
 }
 
 // Settings model (one per user)

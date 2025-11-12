@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { settingsAPI, authAPI } from '../services/api';
 import SuppliersManagement from './SuppliersManagement';
+import { useAuth } from '../contexts/AuthContext';
 
-const SettingsPage = () => {
+const SettingsPage = ({ navigateTo }) => {
+    const { user } = useAuth();
+    const isAdmin = user?.email === 'anthonybechay1@gmail.com';
     const [activeTab, setActiveTab] = useState('company');
     const [companyName, setCompanyName] = useState('');
     const [companyAddress, setCompanyAddress] = useState('');
@@ -197,6 +200,14 @@ const SettingsPage = () => {
                     >
                         List of Values
                     </button>
+                    {isAdmin && navigateTo && (
+                        <button
+                            onClick={() => navigateTo('admin')}
+                            className="py-4 px-1 border-b-2 font-medium text-sm border-transparent text-red-600 hover:text-red-700 hover:border-red-300"
+                        >
+                            Admin Dashboard →
+                        </button>
+                    )}
                 </nav>
             </div>
 

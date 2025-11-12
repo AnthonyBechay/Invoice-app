@@ -1,15 +1,20 @@
 import express from 'express';
 import { prisma } from '../config/database.js';
+import { clearCacheOnMutation } from '../middleware/cache.js';
 
 const router = express.Router();
 
+// Clear cache on payment mutations
+router.use(clearCacheOnMutation('payments'));
+
 /**
  * Get all payments for a user
+ * Supports pagination with page and limit query params
  */
 router.get('/', async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const { limit: limitParam, search } = req.query;
+    const { limit: limitParam, page: pageParam, search } = req.query;
 
     const where = {
       userId
@@ -22,17 +27,49 @@ router.get('/', async (req, res, next) => {
       ];
     }
 
+    // Pagination defaults
+    const page = pageParam ? Math.max(1, parseInt(pageParam)) : 1;
+    const limit = limitParam ? Math.min(100, Math.max(1, parseInt(limitParam))) : 50; // Default 50, max 100
+    const skip = (page - 1) * limit;
+
+    // Get total count for pagination metadata
+    const total = await prisma.payment.count({ where });
+
     const payments = await prisma.payment.findMany({
       where,
-      take: limitParam ? parseInt(limitParam) : undefined,
+      take: limit,
+      skip,
       orderBy: { createdAt: 'desc' },
       include: {
-        document: true,
-        client: true
+        document: {
+          select: {
+            id: true,
+            documentNumber: true,
+            total: true,
+            status: true
+          }
+        },
+        client: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
       }
     });
 
-    res.json(payments);
+    // Return paginated response
+    res.json({
+      data: payments,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasMore: page * limit < total
+      }
+    });
   } catch (error) {
     next(error);
   }

@@ -19,26 +19,27 @@ const ProformasPage = ({ navigateTo }) => {
     const [historyFilter, setHistoryFilter] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
     const debouncedSearchQuery = useDebounce(searchQuery, 300);
-    const [displayLimit, setDisplayLimit] = useState(30);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, totalPages: 1, hasMore: false });
     const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState(null);
     const [convertingIds, setConvertingIds] = useState(new Set()); // Track converting proformas
     const fileInputRef = useRef(null);
 
-    const fetchProformas = async () => {
-        console.log("ProformasPage: Fetching proformas");
-        setLoading(true);
+    const fetchProformas = async (page = 1, append = false) => {
+        console.log("ProformasPage: Fetching proformas, page:", page);
+        if (!append) setLoading(true);
+        else setIsLoadingMore(true);
 
         try {
-            // Fetch all proformas (both active and deleted) with timeout handling
-            const fetchPromise = documentsAPI.getAll('proforma');
-            const timeoutPromise = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error('Request timeout')), 10000)
-            );
+            // Fetch proformas with pagination
+            const response = await documentsAPI.getAll('proforma', null, 50, page, debouncedSearchQuery || '');
             
-            const allProformas = await Promise.race([fetchPromise, timeoutPromise]);
-            console.log("ProformasPage: Received", allProformas.length, "documents");
-            console.log("ProformasPage: Sample statuses:", allProformas.slice(0, 5).map(d => ({ id: d.id, status: d.status, number: d.documentNumber })));
+            // Handle both old format (array) and new format (object with data property)
+            const allProformas = response.data || response;
+            const paginationInfo = response.pagination || { page, limit: 50, total: allProformas.length, totalPages: 1, hasMore: false };
+            
+            console.log("ProformasPage: Received", allProformas.length, "documents, pagination:", paginationInfo);
 
             const activeDocs = [];
             const cancelledDocs = [];
@@ -52,38 +53,41 @@ const ProformasPage = ({ navigateTo }) => {
 
                 if (doc.status === 'CANCELLED') {
                     cancelledDocs.push(doc);
-                    console.log("Found cancelled proforma:", doc.documentNumber, doc.status);
                 } else {
                     activeDocs.push(doc);
                 }
             });
 
-            // Sort by date descending
-            activeDocs.sort((a, b) => {
-                const dateA = new Date(a.date);
-                const dateB = new Date(b.date);
-                return dateB - dateA;
-            });
-            cancelledDocs.sort((a, b) => {
-                const dateA = a.updatedAt ? new Date(a.updatedAt) : (a.createdAt ? new Date(a.createdAt) : new Date());
-                const dateB = b.updatedAt ? new Date(b.updatedAt) : (b.createdAt ? new Date(b.createdAt) : new Date());
-                return dateB - dateA;
-            });
-
-            console.log("ProformasPage: Setting proformas - active:", activeDocs.length, "cancelled:", cancelledDocs.length);
-            setProformas(activeDocs);
-            setCancelledProformas(cancelledDocs);
+            // Update state
+            if (append) {
+                setProformas(prev => [...prev, ...activeDocs]);
+                setCancelledProformas(prev => [...prev, ...cancelledDocs]);
+            } else {
+                setProformas(activeDocs);
+                setCancelledProformas(cancelledDocs);
+            }
+            
+            setPagination(paginationInfo);
+            setCurrentPage(page);
         } catch (error) {
             console.error("ProformasPage: Error fetching proformas:", error);
         } finally {
             setLoading(false);
+            setIsLoadingMore(false);
         }
     };
 
     useEffect(() => {
         console.log("ProformasPage: useEffect running");
-        fetchProformas();
+        fetchProformas(1, false);
     }, []);
+
+    // Refetch when search query changes
+    useEffect(() => {
+        if (debouncedSearchQuery !== undefined) {
+            fetchProformas(1, false);
+        }
+    }, [debouncedSearchQuery]);
 
 
     const fetchHistoryInvoices = async (loadMore = false) => {
@@ -94,8 +98,9 @@ const ProformasPage = ({ navigateTo }) => {
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
         try {
-            // Fetch all invoices and filter by date
-            const allInvoices = await documentsAPI.getAll('INVOICE');
+            // Fetch invoices with pagination (last 30 days)
+            const response = await documentsAPI.getAll('INVOICE', null, 100, 1, '');
+            const allInvoices = response.data || response;
             
             // Filter by date (last 30 days)
             let newInvoices = allInvoices.filter(inv => {
@@ -625,9 +630,9 @@ const ProformasPage = ({ navigateTo }) => {
                         return;
                     }
 
-                    await documentsAPI.batchCreate(validDocuments);
-                    await fetchProformas();
-                    alert(`Successfully imported ${validDocuments.length} proformas`);
+            await documentsAPI.batchCreate(validDocuments);
+            await fetchProformas(1, false); // Reset to first page after import
+            alert(`Successfully imported ${validDocuments.length} proformas`);
                 } catch (err) {
                     console.error('Error importing proformas:', err);
                     alert('Failed to import proformas: ' + (err.message || 'Unknown error'));
@@ -662,7 +667,7 @@ const ProformasPage = ({ navigateTo }) => {
             await documentsAPI.convertToInvoice(proforma.id);
 
             // Refresh proformas list
-            await fetchProformas();
+            await fetchProformas(1, false);
 
             // Navigate to invoices page
             navigateTo('invoices');
@@ -701,7 +706,7 @@ const ProformasPage = ({ navigateTo }) => {
                 status: 'CANCELLED'
             });
             setConfirmDelete(null);
-            await fetchProformas();
+            await fetchProformas(1, false);
         } catch (error) {
             console.error("Error cancelling proforma: ", error);
             alert('Error cancelling proforma. Please try again.');
@@ -722,7 +727,7 @@ const ProformasPage = ({ navigateTo }) => {
             await documentsAPI.update(proformaId, {
                 status: 'DRAFT'
             });
-            await fetchProformas();
+            await fetchProformas(1, false);
         } catch (error) {
             console.error("Error restoring proforma: ", error);
         }
@@ -737,7 +742,7 @@ const ProformasPage = ({ navigateTo }) => {
         
         try {
             await documentsAPI.delete(proformaId);
-            await fetchProformas();
+            await fetchProformas(1, false);
             alert('Proforma permanently deleted.');
         } catch (error) {
             console.error("Error permanently deleting proforma: ", error);
@@ -755,9 +760,11 @@ const ProformasPage = ({ navigateTo }) => {
     });
 
     // Filter proformas based on debounced search query - memoized
+    // Note: Server-side search is now used, but we keep client-side filter for immediate feedback
     const filteredProformas = useMemo(() => {
+        if (!debouncedSearchQuery) return proformas;
+        const search = debouncedSearchQuery.toLowerCase();
         return proformas.filter(doc => {
-            const search = debouncedSearchQuery.toLowerCase();
             const dateStr = new Date(doc.date).toLocaleDateString();
             const clientName = doc.client?.name || doc.clientName || '';
             return (
@@ -769,10 +776,8 @@ const ProformasPage = ({ navigateTo }) => {
         });
     }, [proformas, debouncedSearchQuery]);
 
-    // Limit displayed proformas - memoized
-    const displayedProformas = useMemo(() => {
-        return filteredProformas.slice(0, displayLimit);
-    }, [filteredProformas, displayLimit]);
+    // Use filtered proformas directly (pagination handled server-side)
+    const displayedProformas = filteredProformas;
 
     // Calculate statistics - memoized
     const totalAmount = useMemo(() => {
@@ -946,16 +951,12 @@ const ProformasPage = ({ navigateTo }) => {
                     )}
                 </div>
                 
-                {/* Load More Button - only show when not searching */}
-                {!debouncedSearchQuery && filteredProformas.length > displayLimit && (
+                {/* Load More Button - show when there are more pages */}
+                {pagination.hasMore && (
                     <div className="mt-4 text-center">
                         <button
                             onClick={() => {
-                                setIsLoadingMore(true);
-                                setTimeout(() => {
-                                    setDisplayLimit(prev => prev + 30);
-                                    setIsLoadingMore(false);
-                                }, 300);
+                                fetchProformas(currentPage + 1, true);
                             }}
                             disabled={isLoadingMore}
                             className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mx-auto"
@@ -966,9 +967,12 @@ const ProformasPage = ({ navigateTo }) => {
                                     Loading...
                                 </>
                             ) : (
-                                `Load More Proformas (${filteredProformas.length - displayLimit} remaining)`
+                                `Load More Proformas (${pagination.total - displayedProformas.length} remaining)`
                             )}
                         </button>
+                        <p className="text-sm text-gray-500 mt-2">
+                            Showing {displayedProformas.length} of {pagination.total} proformas
+                        </p>
                     </div>
                 )}
             </div>
