@@ -185,10 +185,14 @@ const InvoicesPage = ({ navigateTo }) => {
         try {
             const amount = parseFloat(paymentAmount);
 
+            const outstanding = selectedInvoice.total - (selectedInvoice.totalPaid || 0);
+            const amountToPay = Math.min(amount, outstanding); // Cap to outstanding amount
+            const remainder = amount - amountToPay; // Amount that exceeds outstanding
+
             if (payFromAccount) {
                 // Pay from client account balance
-                if (clientBalance < amount) {
-                    alert(`Insufficient client balance. Available: $${clientBalance.toFixed(2)}, Required: $${amount.toFixed(2)}`);
+                if (clientBalance < amountToPay) {
+                    alert(`Insufficient client balance. Available: $${clientBalance.toFixed(2)}, Required: $${amountToPay.toFixed(2)}`);
                     setIsSubmittingPayment(false);
                     return;
                 }
@@ -201,14 +205,16 @@ const InvoicesPage = ({ navigateTo }) => {
                     return dateA - dateB;
                 });
 
-                let remainingToSettle = amount;
+                // Allocate payments to invoice (FIFO)
+                let remainingToSettle = amountToPay;
+
                 for (const payment of clientPayments) {
                     if (remainingToSettle <= 0) break;
 
                     const amountToAllocate = Math.min(payment.amount, remainingToSettle);
 
                     if (amountToAllocate === payment.amount) {
-                        // Full payment allocated to this invoice
+                        // Full payment allocated
                         await paymentsAPI.update(payment.id, {
                             documentId: selectedInvoice.id,
                             invoiceNumber: selectedInvoice.documentNumber || '',
@@ -226,7 +232,7 @@ const InvoicesPage = ({ navigateTo }) => {
 
                         // Create new payment for remaining unallocated amount
                         const remainingUnallocated = payment.amount - amountToAllocate;
-                        const newPaymentData = {
+                        await paymentsAPI.create({
                             clientId: payment.clientId,
                             clientName: payment.clientName || '',
                             amount: remainingUnallocated,
@@ -235,10 +241,23 @@ const InvoicesPage = ({ navigateTo }) => {
                             paymentDate: payment.paymentDate,
                             paymentMethod: payment.paymentMethod,
                             notes: (payment.notes || '') + ` | Split from original payment`
-                        };
-                        await paymentsAPI.create(newPaymentData);
+                        });
                         remainingToSettle = 0;
                     }
+                }
+
+                // If there's a remainder (amount exceeded outstanding), add it to client account
+                if (remainder > 0) {
+                    await paymentsAPI.create({
+                        clientId: selectedInvoice.client.id,
+                        clientName: selectedInvoice.clientName || selectedInvoice.client?.name || '',
+                        amount: remainder,
+                        documentId: null,
+                        invoiceNumber: '',
+                        paymentDate: new Date(paymentDate).toISOString(),
+                        paymentMethod: paymentMethod,
+                        notes: (paymentNote || '') + ` | Excess payment added to client account (invoice fully paid)`
+                    });
                 }
             } else {
                 // Add new payment to the payments collection (allocated to this invoice)
@@ -247,13 +266,27 @@ const InvoicesPage = ({ navigateTo }) => {
                     clientName: selectedInvoice.clientName || selectedInvoice.client?.name || '',
                     documentId: selectedInvoice.id,
                     invoiceNumber: selectedInvoice.documentNumber || '',
-                    amount: amount,
+                    amount: amountToPay,
                     paymentDate: new Date(paymentDate).toISOString(),
                     paymentMethod: paymentMethod,
                     notes: paymentNote || ''
                 };
 
                 await paymentsAPI.create(paymentData);
+
+                // If there's a remainder, add it to client account
+                if (remainder > 0) {
+                    await paymentsAPI.create({
+                        clientId: selectedInvoice.client.id,
+                        clientName: selectedInvoice.clientName || selectedInvoice.client?.name || '',
+                        amount: remainder,
+                        documentId: null,
+                        invoiceNumber: '',
+                        paymentDate: new Date(paymentDate).toISOString(),
+                        paymentMethod: paymentMethod,
+                        notes: (paymentNote || '') + ` | Excess payment added to client account (invoice fully paid)`
+                    });
+                }
             }
 
             // Refresh data to get updated payment status
@@ -960,7 +993,10 @@ const InvoicesPage = ({ navigateTo }) => {
                             <div className="space-y-4">
                                 <div>
                                     <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                        Payment Amount *
+                                        Payment Amount * 
+                                        <span className="text-xs text-gray-500 ml-2">
+                                            (Max: ${(selectedInvoice.total - (selectedInvoice.totalPaid || 0)).toFixed(2)})
+                                        </span>
                                     </label>
                                     <input
                                         type="number"
@@ -968,16 +1004,18 @@ const InvoicesPage = ({ navigateTo }) => {
                                         onChange={(e) => setPaymentAmount(e.target.value)}
                                         step="0.01"
                                         min="0.01"
-                                        max={payFromAccount ? Math.min(clientBalance, selectedInvoice.total - (selectedInvoice.totalPaid || 0)) : (selectedInvoice.total - (selectedInvoice.totalPaid || 0))}
                                         className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-lg"
                                         placeholder="0.00"
                                         required
                                     />
+                                    {paymentAmount && parseFloat(paymentAmount) > (selectedInvoice.total - (selectedInvoice.totalPaid || 0)) && (
+                                        <p className="text-xs text-blue-600 mt-1 font-medium">
+                                            ⓘ Excess amount (${(parseFloat(paymentAmount) - (selectedInvoice.total - (selectedInvoice.totalPaid || 0))).toFixed(2)}) will be added to client account
+                                        </p>
+                                    )}
                                     <p className="text-xs text-gray-500 mt-1">
-                                        {payFromAccount
-                                            ? `Maximum from client balance: $${Math.min(clientBalance, selectedInvoice.total - (selectedInvoice.totalPaid || 0)).toFixed(2)}`
-                                            : `Maximum: $${(selectedInvoice.total - (selectedInvoice.totalPaid || 0)).toFixed(2)}`
-                                        }
+                                        Outstanding: ${(selectedInvoice.total - (selectedInvoice.totalPaid || 0)).toFixed(2)}
+                                        {payFromAccount && ` | Available balance: $${clientBalance.toFixed(2)}`}
                                     </p>
                                 </div>
 
