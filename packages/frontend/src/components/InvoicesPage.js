@@ -596,14 +596,34 @@ const InvoicesPage = ({ navigateTo }) => {
                                 }
                                 
                                 const documentItems = await Promise.all(items.map(async (item) => {
-                                    // Try to match stock item by name
+                                    // Try to match stock item by name - improved matching
                                     let stockId = null;
                                     if (item.name && stockItems.length > 0) {
-                                        const matchedStock = stockItems.find(s => 
-                                            s.name && s.name.trim().toLowerCase() === item.name.trim().toLowerCase()
+                                        // Normalize the item name for matching
+                                        const normalizeName = (name) => {
+                                            return (name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+                                        };
+                                        
+                                        const itemNameNormalized = normalizeName(item.name);
+                                        
+                                        // Try exact match first
+                                        let matchedStock = stockItems.find(s => 
+                                            s.name && normalizeName(s.name) === itemNameNormalized
                                         );
+                                        
+                                        // If no exact match, try partial match (contains)
+                                        if (!matchedStock) {
+                                            matchedStock = stockItems.find(s => 
+                                                s.name && normalizeName(s.name).includes(itemNameNormalized) || 
+                                                itemNameNormalized.includes(normalizeName(s.name))
+                                            );
+                                        }
+                                        
                                         if (matchedStock) {
                                             stockId = matchedStock.id;
+                                            console.log(`Matched stock item: "${item.name}" -> "${matchedStock.name}" (ID: ${matchedStock.id})`);
+                                        } else {
+                                            console.warn(`Could not match stock item: "${item.name}"`);
                                         }
                                     }
                                     

@@ -38,6 +38,7 @@ const ProformasPage = ({ navigateTo }) => {
             
             const allProformas = await Promise.race([fetchPromise, timeoutPromise]);
             console.log("ProformasPage: Received", allProformas.length, "documents");
+            console.log("ProformasPage: Sample statuses:", allProformas.slice(0, 5).map(d => ({ id: d.id, status: d.status, number: d.documentNumber })));
 
             const activeDocs = [];
             const cancelledDocs = [];
@@ -51,6 +52,7 @@ const ProformasPage = ({ navigateTo }) => {
 
                 if (doc.status === 'CANCELLED') {
                     cancelledDocs.push(doc);
+                    console.log("Found cancelled proforma:", doc.documentNumber, doc.status);
                 } else {
                     activeDocs.push(doc);
                 }
@@ -304,14 +306,34 @@ const ProformasPage = ({ navigateTo }) => {
                                 
                                 // Build items array with laborPrice and mandays as items
                                 const documentItems = await Promise.all(items.map(async (item) => {
-                                    // Try to match stock item by name
+                                    // Try to match stock item by name - improved matching
                                     let stockId = null;
                                     if (item.name && stockItems.length > 0) {
-                                        const matchedStock = stockItems.find(s => 
-                                            s.name && s.name.trim().toLowerCase() === item.name.trim().toLowerCase()
+                                        // Normalize the item name for matching
+                                        const normalizeName = (name) => {
+                                            return (name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+                                        };
+                                        
+                                        const itemNameNormalized = normalizeName(item.name);
+                                        
+                                        // Try exact match first
+                                        let matchedStock = stockItems.find(s => 
+                                            s.name && normalizeName(s.name) === itemNameNormalized
                                         );
+                                        
+                                        // If no exact match, try partial match (contains)
+                                        if (!matchedStock) {
+                                            matchedStock = stockItems.find(s => 
+                                                s.name && normalizeName(s.name).includes(itemNameNormalized) || 
+                                                itemNameNormalized.includes(normalizeName(s.name))
+                                            );
+                                        }
+                                        
                                         if (matchedStock) {
                                             stockId = matchedStock.id;
+                                            console.log(`Matched stock item: "${item.name}" -> "${matchedStock.name}" (ID: ${matchedStock.id})`);
+                                        } else {
+                                            console.warn(`Could not match stock item: "${item.name}"`);
                                         }
                                     }
                                     
