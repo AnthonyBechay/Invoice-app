@@ -216,22 +216,81 @@ const ProformasPage = ({ navigateTo }) => {
                                     // Search through ALL fields to find the one containing JSON array
                                     // This handles cases where date splitting causes misalignment
                                     if (!itemsJson || (!itemsJson.trim().startsWith('[') && !itemsJson.trim().startsWith('{'))) {
-                                        for (const fieldValue of allRowValues) {
+                                        // First, try to find where the JSON starts
+                                        let jsonStartIndex = -1;
+                                        for (let i = 0; i < allRowValues.length; i++) {
+                                            const fieldValue = allRowValues[i];
                                             if (fieldValue && typeof fieldValue === 'string') {
                                                 const trimmed = fieldValue.trim();
                                                 // Check if this looks like a JSON array/object with items
                                                 if ((trimmed.startsWith('[') || trimmed.startsWith('{')) &&
                                                     (trimmed.includes('name') || trimmed.includes('qty') || trimmed.includes('unitPrice'))) {
+                                                    jsonStartIndex = i;
                                                     itemsJson = trimmed;
-                                                    console.log('Found Items JSON in misaligned field:', itemsJson);
+                                                    console.log('Found Items JSON start at index', i, ':', itemsJson);
                                                     break;
                                                 }
                                                 // Also check for unquoted format: [{name:value,qty:1}]
                                                 if (trimmed.includes('name:') && (trimmed.includes('qty:') || trimmed.includes('unitPrice:'))) {
+                                                    jsonStartIndex = i;
                                                     itemsJson = trimmed;
-                                                    console.log('Found Items JSON (unquoted format) in misaligned field:', itemsJson);
+                                                    console.log('Found Items JSON (unquoted format) start at index', i, ':', itemsJson);
                                                     break;
                                                 }
+                                            }
+                                        }
+                                        
+                                        // If we found the start but it doesn't end with ], try to reconstruct from following fields
+                                        if (jsonStartIndex >= 0 && !itemsJson.trim().endsWith(']') && !itemsJson.trim().endsWith('}')) {
+                                            // Try to reconstruct by joining subsequent fields until we find a closing bracket
+                                            let reconstructedJson = itemsJson;
+                                            let openBraces = (itemsJson.match(/\{/g) || []).length;
+                                            let closeBraces = (itemsJson.match(/\}/g) || []).length;
+                                            let openBrackets = (itemsJson.match(/\[/g) || []).length;
+                                            let closeBrackets = (itemsJson.match(/\]/g) || []).length;
+                                            
+                                            for (let i = jsonStartIndex + 1; i < allRowValues.length && i < jsonStartIndex + 15; i++) {
+                                                const nextValue = allRowValues[i];
+                                                if (nextValue && typeof nextValue === 'string') {
+                                                    const trimmed = nextValue.trim();
+                                                    // Smart joining: if previous ends with comma/brace/bracket, don't add comma
+                                                    // If next starts with a key (like "qty:" or "unitPrice:"), it's a continuation
+                                                    const prevEndsWithSeparator = reconstructedJson.endsWith(',') || reconstructedJson.endsWith('{') || reconstructedJson.endsWith('[') || reconstructedJson.endsWith(':');
+                                                    const nextStartsWithKey = trimmed.match(/^\s*[a-zA-Z_][a-zA-Z0-9_]*\s*:/);
+                                                    
+                                                    if (!prevEndsWithSeparator && !nextStartsWithKey && !trimmed.startsWith('}') && !trimmed.startsWith(']')) {
+                                                        reconstructedJson += ',';
+                                                    }
+                                                    reconstructedJson += trimmed;
+                                                    
+                                                    // Update brace/bracket counts
+                                                    openBraces += (trimmed.match(/\{/g) || []).length;
+                                                    closeBraces += (trimmed.match(/\}/g) || []).length;
+                                                    openBrackets += (trimmed.match(/\[/g) || []).length;
+                                                    closeBrackets += (trimmed.match(/\]/g) || []).length;
+                                                    
+                                                    // Check if we've closed the JSON (all braces and brackets match)
+                                                    if (openBraces === closeBraces && openBrackets === closeBrackets && reconstructedJson.trim().endsWith(']')) {
+                                                        itemsJson = reconstructedJson;
+                                                        console.log('Reconstructed Items JSON from multiple fields:', itemsJson);
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                            
+                                            // If still not closed, try to close it manually
+                                            if (openBraces !== closeBraces || openBrackets !== closeBrackets) {
+                                                // Add missing closing braces
+                                                while (openBraces > closeBraces) {
+                                                    reconstructedJson += '}';
+                                                    closeBraces++;
+                                                }
+                                                // Add missing closing bracket
+                                                if (openBrackets > closeBrackets) {
+                                                    reconstructedJson += ']';
+                                                }
+                                                itemsJson = reconstructedJson;
+                                                console.log('Manually closed Items JSON:', itemsJson);
                                             }
                                         }
                                     }
@@ -364,16 +423,24 @@ const ProformasPage = ({ navigateTo }) => {
                                             );
                                         }
                                         
-                                        if (matchedStock) {
-                                            stockId = matchedStock.id;
-                                            console.log(`Matched stock item: "${item.name}" -> "${matchedStock.name}" (ID: ${matchedStock.id})`);
+                                        if (matchedStock && matchedStock.id) {
+                                            // Validate that the stockId exists in the stockItems array
+                                            const stockExists = stockItems.some(s => s.id === matchedStock.id);
+                                            if (stockExists) {
+                                                stockId = matchedStock.id;
+                                                console.log(`Matched stock item: "${item.name}" -> "${matchedStock.name}" (ID: ${matchedStock.id})`);
+                                            } else {
+                                                console.warn(`Matched stock item but ID not found in stockItems: "${item.name}" -> "${matchedStock.name}" (ID: ${matchedStock.id})`);
+                                                stockId = null;
+                                            }
                                         } else {
                                             console.warn(`Could not match stock item: "${item.name}"`);
+                                            stockId = null;
                                         }
                                     }
                                     
                                     return {
-                                        stockId: stockId,
+                                        stockId: stockId, // Will be null if not matched or invalid
                                         name: item.name || '',
                                         description: item.description || '',
                                         quantity: parseFloat(item.qty || item.quantity || 0),

@@ -136,12 +136,48 @@ router.post('/', async (req, res, next) => {
     const userId = req.user.id;
     const { items, mandays, realMandays, ...documentData } = req.body;
 
+    // Validate and sanitize stockIds before creating items to prevent foreign key constraint violations
+    let sanitizedItems = items;
+    if (items && Array.isArray(items)) {
+      sanitizedItems = await Promise.all(items.map(async (item) => {
+        const sanitizedItem = { ...item };
+        
+        // Validate stockId if present
+        if (sanitizedItem.stockId) {
+          try {
+            const stockExists = await prisma.stock.findFirst({
+              where: { 
+                id: sanitizedItem.stockId, 
+                userId 
+              },
+              select: { id: true }
+            });
+            
+            if (!stockExists) {
+              console.warn(`Invalid stockId ${sanitizedItem.stockId} in document item, setting to null`);
+              sanitizedItem.stockId = null;
+            }
+          } catch (error) {
+            console.error(`Error validating stockId ${sanitizedItem.stockId}:`, error);
+            sanitizedItem.stockId = null;
+          }
+        }
+        
+        // Ensure stockId is either a valid UUID string or null (not undefined)
+        if (!sanitizedItem.stockId) {
+          sanitizedItem.stockId = null;
+        }
+        
+        return sanitizedItem;
+      }));
+    }
+
     // Prepare data object with proper JSON handling for mandays fields
     const data = {
       userId,
       ...documentData,
-      items: items ? {
-        create: items
+      items: sanitizedItems ? {
+        create: sanitizedItems
       } : undefined
     };
 
@@ -191,11 +227,59 @@ router.put('/:id', async (req, res, next) => {
     }
 
     // Prepare update data with proper JSON handling
+    // Validate and sanitize stockIds before creating items to prevent foreign key constraint violations
+    let sanitizedItems = items;
+    if (items && Array.isArray(items)) {
+      // Create a sanitized copy of items with validated stockIds
+      sanitizedItems = await Promise.all(items.map(async (item) => {
+        const sanitizedItem = { ...item };
+        
+        // Validate stockId if present (handle empty strings, null, undefined, etc.)
+        const stockId = sanitizedItem.stockId;
+        if (stockId && typeof stockId === 'string' && stockId.trim() !== '') {
+          try {
+            // Basic UUID format validation
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (!uuidRegex.test(stockId.trim())) {
+              console.warn(`Invalid stockId format ${stockId}, setting to null`);
+              sanitizedItem.stockId = null;
+            } else {
+              const stockExists = await prisma.stock.findFirst({
+                where: { 
+                  id: stockId.trim(), 
+                  userId 
+                },
+                select: { id: true } // Only select id for efficiency
+              });
+              
+              if (!stockExists) {
+                // Remove invalid stockId to prevent foreign key constraint violation
+                console.warn(`Invalid stockId ${stockId} (stock not found), setting to null`);
+                sanitizedItem.stockId = null;
+              } else {
+                // Ensure it's trimmed
+                sanitizedItem.stockId = stockId.trim();
+              }
+            }
+          } catch (error) {
+            console.error(`Error validating stockId ${stockId}:`, error);
+            // If validation fails, set to null to be safe
+            sanitizedItem.stockId = null;
+          }
+        } else {
+          // Ensure stockId is null (not undefined, empty string, etc.)
+          sanitizedItem.stockId = null;
+        }
+        
+        return sanitizedItem;
+      }));
+    }
+    
     const data = {
       ...updateData,
-      items: items ? {
+      items: sanitizedItems ? {
         deleteMany: {},
-        create: items
+        create: sanitizedItems
       } : undefined
     };
 
