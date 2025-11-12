@@ -96,13 +96,14 @@ const Dashboard = ({ navigateTo }) => {
                 paymentsAPI.getAll()
             ]);
 
-            // Filter by date range and exclude cancelled/deleted documents
+            // Filter by date range and exclude cancelled/deleted documents for stats
             const docs = allDocuments.filter(doc => {
                 const docDate = new Date(doc.date);
                 return docDate >= dateRange.start &&
                        docDate <= dateRange.end &&
                        doc.status !== 'cancelled' &&
-                       !doc.deleted;
+                       !doc.deleted &&
+                       doc.cancelled !== true;
             });
 
             // Filter active documents only (not converted proformas)
@@ -120,26 +121,36 @@ const Dashboard = ({ navigateTo }) => {
                 invoicesTotal: invoicesTotal,
             });
 
-            // Calculate total paid for each invoice using payments
-            const invoicesWithPayments = invoices.map(inv => {
-                const totalPaid = allPayments
-                    .filter(p => p.documentId === inv.id)
-                    .reduce((sum, p) => sum + p.amount, 0);
-                return { ...inv, totalPaid };
+            // For follow-up, use ALL documents (not filtered by date range) but exclude cancelled/deleted
+            const allActiveDocs = allDocuments.filter(doc => {
+                return doc.status !== 'cancelled' &&
+                       !doc.deleted &&
+                       doc.cancelled !== true;
             });
 
-            // Set pending proformas for follow-up
-            const sortedProformas = [...proformas].sort((a, b) => {
-                const aPaid = allPayments.filter(p => p.documentId === a.id).reduce((sum, p) => sum + p.amount, 0);
-                const bPaid = allPayments.filter(p => p.documentId === b.id).reduce((sum, p) => sum + p.amount, 0);
+            const allProformas = allActiveDocs.filter(d => d.type === 'proforma' && !d.convertedTo);
+            const allInvoices = allActiveDocs.filter(d => d.type === 'invoice');
+
+            // Calculate total paid for each invoice using payments
+            const allInvoicesWithPayments = allInvoices.map(inv => {
+                const totalPaid = allPayments
+                    .filter(p => p.documentId === inv.id)
+                    .reduce((sum, p) => sum + (p.amount || 0), 0);
+                return { ...inv, totalPaid: totalPaid || 0 };
+            });
+
+            // Set pending proformas for follow-up (all active proformas, not just date-filtered)
+            const sortedProformas = [...allProformas].sort((a, b) => {
+                const aPaid = allPayments.filter(p => p.documentId === a.id).reduce((sum, p) => sum + (p.amount || 0), 0);
+                const bPaid = allPayments.filter(p => p.documentId === b.id).reduce((sum, p) => sum + (p.amount || 0), 0);
                 if (aPaid === 0 && bPaid > 0) return -1;
                 if (aPaid > 0 && bPaid === 0) return 1;
                 return new Date(a.date) - new Date(b.date);
             });
             setPendingProformas(sortedProformas.slice(0, 5));
 
-            // Set unpaid invoices for follow-up
-            const unpaid = invoicesWithPayments.filter(inv => inv.totalPaid < inv.total);
+            // Set unpaid invoices for follow-up (all active invoices, not just date-filtered)
+            const unpaid = allInvoicesWithPayments.filter(inv => (inv.totalPaid || 0) < (inv.total || 0));
 
             // Separate overdue invoices (30+ days old and unpaid)
             const thirtyDaysAgo = new Date();

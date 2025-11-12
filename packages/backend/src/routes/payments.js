@@ -129,9 +129,39 @@ router.put('/:id', async (req, res, next) => {
       return res.status(404).json({ error: 'Payment not found' });
     }
 
+    // Handle documentId - convert to relation format if provided
+    const { documentId, ...updateData } = req.body;
+    const data = { ...updateData };
+    
+    if (documentId !== undefined) {
+      if (documentId === null) {
+        data.document = { disconnect: true };
+      } else {
+        // Validate document exists and is an invoice
+        const document = await prisma.document.findFirst({
+          where: {
+            id: documentId,
+            userId
+          }
+        });
+
+        if (!document) {
+          return res.status(404).json({ error: 'Document not found' });
+        }
+
+        if (document.type !== 'INVOICE') {
+          return res.status(400).json({ 
+            error: 'Payments can only be added to invoices. Proformas cannot receive payments.' 
+          });
+        }
+
+        data.document = { connect: { id: documentId } };
+      }
+    }
+
     const payment = await prisma.payment.update({
       where: { id },
-      data: req.body,
+      data,
       include: {
         document: true,
         client: true

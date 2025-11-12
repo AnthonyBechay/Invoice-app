@@ -21,12 +21,22 @@ function AppContent() {
     const [page, setPage] = useState('dashboard');
     const [editingDocument, setEditingDocument] = useState(null);
     const [isSidebarOpen, setSidebarOpen] = useState(false);
+    const [previousPage, setPreviousPage] = useState(null);
 
     const navigateTo = (pageName, data = null) => {
-        if ((pageName === 'newDocument' || pageName === 'viewDocument') && data) {
+        // Track previous page when navigating to viewDocument
+        if (pageName === 'viewDocument' && data) {
+            setPreviousPage(page);
+            setEditingDocument(data);
+        } else if (pageName === 'newDocument' && data) {
+            setPreviousPage(page);
             setEditingDocument(data);
         } else {
             setEditingDocument(null);
+            // Clear previous page when navigating away from viewDocument
+            if (page === 'viewDocument' || page === 'newDocument') {
+                setPreviousPage(null);
+            }
         }
         setPage(pageName);
     };
@@ -74,7 +84,7 @@ function AppContent() {
                             {page === 'stock' && <StockPage />}
                             {page === 'clients' && <ClientsPage />}
                             {page === 'newDocument' && <NewDocumentPage navigateTo={navigateTo} documentToEdit={editingDocument} />}
-                            {page === 'viewDocument' && <ViewDocumentPage documentToView={editingDocument} navigateTo={navigateTo} />}
+                            {page === 'viewDocument' && <ViewDocumentPage documentToView={editingDocument} navigateTo={navigateTo} previousPage={previousPage} />}
                             {page === 'settings' && <SettingsPage />}
                             {page === 'accounting' && <AccountingPage />}
                         </ErrorBoundary>

@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { stockAPI } from '../services/api';
+import { stockAPI, suppliersAPI } from '../services/api';
 import { useDebounce } from '../hooks/useDebounce';
 import { TableSkeleton } from './LoadingSkeleton';
 import Papa from 'papaparse';
 
 const StockPage = () => {
     const [items, setItems] = useState([]);
+    const [suppliers, setSuppliers] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
     const debouncedSearchTerm = useDebounce(searchTerm, 300);
     const [loading, setLoading] = useState(true);
@@ -30,6 +31,7 @@ const StockPage = () => {
         size: '',
         weight: '',
         color: '',
+        supplierId: '',
         supplier: '',
         supplierCode: '',
         warranty: '',
@@ -43,6 +45,19 @@ const StockPage = () => {
     useEffect(() => {
         fetchItems();
     }, [debouncedSearchTerm]);
+
+    useEffect(() => {
+        fetchSuppliers();
+    }, []);
+
+    const fetchSuppliers = async () => {
+        try {
+            const data = await suppliersAPI.getAll();
+            setSuppliers(data);
+        } catch (err) {
+            console.error('Error fetching suppliers:', err);
+        }
+    };
 
     const fetchItems = async () => {
         try {
@@ -75,6 +90,7 @@ const StockPage = () => {
             sellingPrice: parseFloat(newItem.sellingPrice) || 0,
             quantity: parseFloat(newItem.quantity) || 0,
             minQuantity: parseFloat(newItem.minQuantity) || 0,
+            supplierId: newItem.supplierId || null,
         };
 
         try {
@@ -117,6 +133,7 @@ const StockPage = () => {
             size: '',
             weight: '',
             color: '',
+            supplierId: '',
             supplier: '',
             supplierCode: '',
             warranty: '',
@@ -148,7 +165,8 @@ const StockPage = () => {
             size: item.size || '',
             weight: item.weight || '',
             color: item.color || '',
-            supplier: item.supplier || '',
+            supplierId: item.supplierId || item.supplier?.id || '',
+            supplier: item.supplier?.name || item.supplier || '',
             supplierCode: item.supplierCode || '',
             warranty: item.warranty || '',
             notes: item.notes || ''
@@ -268,7 +286,7 @@ const StockPage = () => {
     };
 
     const categories = ['Electrical', 'Plumbing', 'HVAC', 'Tools', 'Hardware', 'Lighting', 'Other'];
-    const units = ['piece', 'meter', 'kg', 'box', 'roll', 'pack', 'liter', 'pair'];
+    const units = ['Piece', 'KG', 'meter', 'roll', 'pack'];
 
     return (
         <div>
@@ -418,18 +436,6 @@ const StockPage = () => {
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Selling Price *</label>
-                                <input
-                                    type="number"
-                                    name="sellingPrice"
-                                    value={newItem.sellingPrice}
-                                    onChange={handleInputChange}
-                                    step="0.01"
-                                    required
-                                    className="w-full p-2 border border-gray-300 rounded-md"
-                                />
-                            </div>
-                            <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Unit</label>
                                 <select
                                     name="unit"
@@ -440,6 +446,20 @@ const StockPage = () => {
                                     <option value="">Select unit...</option>
                                     {units.map(u => <option key={u} value={u}>{u}</option>)}
                                 </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Selling Price {newItem.unit ? `per ${newItem.unit}` : ''} *
+                                </label>
+                                <input
+                                    type="number"
+                                    name="sellingPrice"
+                                    value={newItem.sellingPrice}
+                                    onChange={handleInputChange}
+                                    step="0.01"
+                                    required
+                                    className="w-full p-2 border border-gray-300 rounded-md"
+                                />
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
@@ -555,13 +575,26 @@ const StockPage = () => {
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Supplier</label>
-                                <input
-                                    type="text"
-                                    name="supplier"
-                                    value={newItem.supplier}
-                                    onChange={handleInputChange}
+                                <select
+                                    name="supplierId"
+                                    value={newItem.supplierId || ''}
+                                    onChange={(e) => {
+                                        const selectedSupplier = suppliers.find(s => s.id === e.target.value);
+                                        setNewItem({
+                                            ...newItem,
+                                            supplierId: e.target.value,
+                                            supplier: selectedSupplier ? selectedSupplier.name : ''
+                                        });
+                                    }}
                                     className="w-full p-2 border border-gray-300 rounded-md"
-                                />
+                                >
+                                    <option value="">Select supplier...</option>
+                                    {suppliers.map(supplier => (
+                                        <option key={supplier.id} value={supplier.id}>
+                                            {supplier.name}
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Supplier Code</label>

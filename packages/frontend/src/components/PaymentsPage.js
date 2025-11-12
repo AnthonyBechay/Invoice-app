@@ -342,6 +342,34 @@ const PaymentsPage = () => {
         }));
     };
 
+    const handleClientChangeWithAutoFill = (clientId) => {
+        handleClientChange(clientId);
+        
+        // Auto-fill amount with total outstanding if there's only one unpaid invoice
+        const unpaidInvoices = getClientDocuments(clientId).filter(doc => {
+            const paid = payments.filter(p => p.documentId === doc.id).reduce((sum, p) => sum + p.amount, 0);
+            return paid < doc.total;
+        });
+        
+        if (unpaidInvoices.length === 1) {
+            const outstanding = getOutstandingAmount(unpaidInvoices[0].id);
+            setFormData(prev => ({
+                ...prev,
+                clientId,
+                documentId: unpaidInvoices[0].id,
+                amount: outstanding > 0 ? outstanding.toFixed(2) : ''
+            }));
+        } else if (unpaidInvoices.length > 1) {
+            // If multiple invoices, don't auto-select but show them in dropdown
+            setFormData(prev => ({
+                ...prev,
+                clientId,
+                documentId: '',
+                amount: ''
+            }));
+        }
+    };
+
     const handleSettleDocument = async (clientId, documentId, amount) => {
         if (settlementInProgress) return;
 
@@ -578,20 +606,39 @@ const PaymentsPage = () => {
                                     {isClientDropdownVisible && (
                                         <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
                                             {clients
-                                                .filter(client =>
-                                                    client.name.toLowerCase().includes(clientSearchTerm.toLowerCase()) ||
-                                                    (client.email && client.email.toLowerCase().includes(clientSearchTerm.toLowerCase())) ||
-                                                    (client.location && client.location.toLowerCase().includes(clientSearchTerm.toLowerCase()))
-                                                )
+                                                .filter(client => {
+                                                    // Only show clients with unpaid invoices
+                                                    const unpaidInvoices = getClientDocuments(client.id).filter(doc => {
+                                                        const paid = payments.filter(p => p.documentId === doc.id).reduce((sum, p) => sum + p.amount, 0);
+                                                        return paid < doc.total;
+                                                    });
+                                                    const hasUnpaidInvoices = unpaidInvoices.length > 0;
+                                                    
+                                                    // Also filter by search term
+                                                    const matchesSearch = client.name.toLowerCase().includes(clientSearchTerm.toLowerCase()) ||
+                                                        (client.email && client.email.toLowerCase().includes(clientSearchTerm.toLowerCase())) ||
+                                                        (client.location && client.location.toLowerCase().includes(clientSearchTerm.toLowerCase()));
+                                                    
+                                                    return hasUnpaidInvoices && matchesSearch;
+                                                })
                                                 .map(client => {
                                                     const balance = getClientAccountBalance(client.id);
+                                                    const unpaidInvoices = getClientDocuments(client.id).filter(doc => {
+                                                        const paid = payments.filter(p => p.documentId === doc.id).reduce((sum, p) => sum + p.amount, 0);
+                                                        return paid < doc.total;
+                                                    });
+                                                    const totalOutstanding = unpaidInvoices.reduce((sum, doc) => {
+                                                        const paid = payments.filter(p => p.documentId === doc.id).reduce((sum, p) => sum + p.amount, 0);
+                                                        return sum + (doc.total - paid);
+                                                    }, 0);
+                                                    
                                                     return (
                                                         <div
                                                             key={client.id}
                                                             onClick={() => {
                                                                 setSelectedClient(client);
                                                                 setClientSearchTerm(client.name);
-                                                                handleClientChange(client.id);
+                                                                handleClientChangeWithAutoFill(client.id);
                                                                 setIsClientDropdownVisible(false);
                                                             }}
                                                             className="p-3 hover:bg-gray-100 cursor-pointer border-b"
@@ -600,17 +647,24 @@ const PaymentsPage = () => {
                                                             <div className="text-sm text-gray-600">
                                                                 {client.email && `${client.email} | `}
                                                                 {client.location && `${client.location} | `}
-                                                                {balance > 0 && <span className="text-green-600 font-semibold">Balance: ${balance.toFixed(2)}</span>}
+                                                                <span className="text-red-600 font-semibold">Outstanding: ${totalOutstanding.toFixed(2)}</span>
+                                                                {balance > 0 && <span className="text-green-600 font-semibold ml-2">Balance: ${balance.toFixed(2)}</span>}
                                                             </div>
                                                         </div>
                                                     );
                                                 })}
-                                            {clients.filter(client =>
-                                                client.name.toLowerCase().includes(clientSearchTerm.toLowerCase()) ||
-                                                (client.email && client.email.toLowerCase().includes(clientSearchTerm.toLowerCase())) ||
-                                                (client.location && client.location.toLowerCase().includes(clientSearchTerm.toLowerCase()))
-                                            ).length === 0 && (
-                                                <div className="p-3 text-gray-500 text-center">No clients found</div>
+                                            {clients.filter(client => {
+                                                const unpaidInvoices = getClientDocuments(client.id).filter(doc => {
+                                                    const paid = payments.filter(p => p.documentId === doc.id).reduce((sum, p) => sum + p.amount, 0);
+                                                    return paid < doc.total;
+                                                });
+                                                const hasUnpaidInvoices = unpaidInvoices.length > 0;
+                                                const matchesSearch = client.name.toLowerCase().includes(clientSearchTerm.toLowerCase()) ||
+                                                    (client.email && client.email.toLowerCase().includes(clientSearchTerm.toLowerCase())) ||
+                                                    (client.location && client.location.toLowerCase().includes(clientSearchTerm.toLowerCase()));
+                                                return hasUnpaidInvoices && matchesSearch;
+                                            }).length === 0 && (
+                                                <div className="p-3 text-gray-500 text-center">No clients with unpaid invoices found</div>
                                             )}
                                         </div>
                                     )}
@@ -629,15 +683,21 @@ const PaymentsPage = () => {
                                     disabled={!formData.clientId}
                                 >
                                     <option value="">-- No Invoice (Add to Client Account) --</option>
-                                    {getFilteredDocuments(formData.clientId).map(doc => {
-                                        const docInfo = getDocumentInfo(doc.id);
-                                        const outstanding = getOutstandingAmount(doc.id);
-                                        return (
-                                            <option key={doc.id} value={doc.id}>
-                                                {docInfo.number} - ${docInfo.total.toFixed(2)} (Due: ${outstanding.toFixed(2)})
-                                            </option>
-                                        );
-                                    })}
+                                    {getFilteredDocuments(formData.clientId)
+                                        .filter(doc => {
+                                            // Only show unpaid invoices
+                                            const outstanding = getOutstandingAmount(doc.id);
+                                            return outstanding > 0;
+                                        })
+                                        .map(doc => {
+                                            const docInfo = getDocumentInfo(doc.id);
+                                            const outstanding = getOutstandingAmount(doc.id);
+                                            return (
+                                                <option key={doc.id} value={doc.id}>
+                                                    {docInfo.number} - ${docInfo.total.toFixed(2)} (Due: ${outstanding.toFixed(2)})
+                                                </option>
+                                            );
+                                        })}
                                 </select>
                                 <p className="text-xs text-gray-500 mt-1">
                                     {formData.documentId
@@ -904,7 +964,14 @@ const PaymentsPage = () => {
                                 const isAllocated = !!payment.documentId;
 
                                 return (
-                                    <tr key={payment.id} className="hover:bg-indigo-50 transition-colors">
+                                    <tr 
+                                        key={payment.id} 
+                                        className="hover:bg-indigo-50 transition-colors cursor-pointer"
+                                        onClick={() => {
+                                            setSelectedPaymentForView(payment);
+                                            setShowPaymentReceipt(true);
+                                        }}
+                                    >
                                         <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                             {new Date(payment.paymentDate).toLocaleDateString()}
                                         </td>
@@ -928,7 +995,7 @@ const PaymentsPage = () => {
                                             {(payment.paymentMethod || '').replace('_', ' ')}
                                         </td>
                                         <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                            <div className="flex flex-col sm:flex-row gap-1 sm:gap-2">
+                                            <div className="flex flex-col sm:flex-row gap-1 sm:gap-2" onClick={(e) => e.stopPropagation()}>
                                                 <button
                                                     onClick={() => {
                                                         setEditingPayment(payment);
@@ -1186,6 +1253,114 @@ const PaymentsPage = () => {
                                     </div>
                                 )}
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Payment Receipt Modal */}
+            {showPaymentReceipt && selectedPaymentForView && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+                        <div className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-4">
+                            <div className="flex justify-between items-center">
+                                <div>
+                                    <h2 className="text-2xl font-bold">Payment Receipt</h2>
+                                    <p className="text-green-100 text-sm mt-1">
+                                        Payment #{selectedPaymentForView.id.substring(0, 8)}
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        setShowPaymentReceipt(false);
+                                        setSelectedPaymentForView(null);
+                                    }}
+                                    className="text-white hover:text-gray-200 transition-colors"
+                                >
+                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="p-6 overflow-y-auto flex-1">
+                            <div ref={receiptPrintRef} className="print-area bg-white p-6 rounded-lg">
+                                {/* Company Info */}
+                                <div className="text-center mb-6 border-b pb-4">
+                                    <h1 className="text-2xl font-bold text-gray-800">{userSettings?.companyName || 'Company Name'}</h1>
+                                    {userSettings?.companyAddress && (
+                                        <p className="text-gray-600 text-sm mt-1">{userSettings.companyAddress}</p>
+                                    )}
+                                    {userSettings?.companyPhone && (
+                                        <p className="text-gray-600 text-sm">{userSettings.companyPhone}</p>
+                                    )}
+                                </div>
+
+                                {/* Receipt Title */}
+                                <h2 className="text-xl font-bold text-gray-800 mb-4 text-center">PAYMENT RECEIPT</h2>
+
+                                {/* Payment Details */}
+                                <div className="space-y-3 mb-6">
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-600">Receipt Number:</span>
+                                        <span className="font-semibold">{selectedPaymentForView.id.substring(0, 8).toUpperCase()}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-600">Date:</span>
+                                        <span className="font-semibold">{new Date(selectedPaymentForView.paymentDate).toLocaleDateString()}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-600">Client:</span>
+                                        <span className="font-semibold">{getClientName(selectedPaymentForView)}</span>
+                                    </div>
+                                    {selectedPaymentForView.invoiceNumber && (
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-600">Invoice Number:</span>
+                                            <span className="font-semibold">{selectedPaymentForView.invoiceNumber}</span>
+                                        </div>
+                                    )}
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-600">Payment Method:</span>
+                                        <span className="font-semibold capitalize">{(selectedPaymentForView.paymentMethod || '').replace('_', ' ')}</span>
+                                    </div>
+                                    <div className="flex justify-between border-t pt-3 mt-3">
+                                        <span className="text-lg font-bold text-gray-800">Amount Paid:</span>
+                                        <span className="text-lg font-bold text-green-600">${selectedPaymentForView.amount.toFixed(2)}</span>
+                                    </div>
+                                    {selectedPaymentForView.notes && (
+                                        <div className="mt-4 pt-4 border-t">
+                                            <p className="text-gray-600 text-sm"><strong>Notes:</strong></p>
+                                            <p className="text-gray-700 text-sm">{selectedPaymentForView.notes}</p>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Footer */}
+                                <div className="mt-8 pt-4 border-t text-center text-gray-500 text-xs">
+                                    <p>Thank you for your payment!</p>
+                                    <p className="mt-2">{userSettings?.companyName || 'Company Name'}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-gray-50 px-6 py-4 flex justify-end space-x-3 border-t">
+                            <button
+                                onClick={() => {
+                                    setShowPaymentReceipt(false);
+                                    setSelectedPaymentForView(null);
+                                }}
+                                className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors font-medium"
+                            >
+                                Close
+                            </button>
+                            <button
+                                onClick={handleGenerateReceiptPDF}
+                                disabled={isGeneratingReceiptPDF}
+                                className="px-6 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-medium shadow-md"
+                            >
+                                {isGeneratingReceiptPDF ? 'Generating PDF...' : 'Download PDF'}
+                            </button>
                         </div>
                     </div>
                 </div>

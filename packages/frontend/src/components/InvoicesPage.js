@@ -194,7 +194,7 @@ const InvoicesPage = ({ navigateTo }) => {
                 }
 
                 // Get unallocated payments for this client (FIFO)
-                const clientPayments = payments.filter(p => p.clientId === selectedInvoice.client.id && !p.settledToDocument);
+                const clientPayments = payments.filter(p => p.clientId === selectedInvoice.client.id && !p.documentId);
                 clientPayments.sort((a, b) => {
                     const dateA = new Date(a.paymentDate);
                     const dateB = new Date(b.paymentDate);
@@ -211,9 +211,8 @@ const InvoicesPage = ({ navigateTo }) => {
                         // Full payment allocated to this invoice
                         await paymentsAPI.update(payment.id, {
                             documentId: selectedInvoice.id,
-                            settledToDocument: true,
-                            settledAt: new Date().toISOString(),
-                            notes: (payment.notes || '') + ` | Allocated to invoice ${selectedInvoice.invoiceNumber}`
+                            invoiceNumber: selectedInvoice.documentNumber || '',
+                            notes: (payment.notes || '') + ` | Allocated to invoice ${selectedInvoice.documentNumber || selectedInvoice.id}`
                         });
                         remainingToSettle -= amountToAllocate;
                     } else {
@@ -221,9 +220,8 @@ const InvoicesPage = ({ navigateTo }) => {
                         await paymentsAPI.update(payment.id, {
                             amount: amountToAllocate,
                             documentId: selectedInvoice.id,
-                            settledToDocument: true,
-                            settledAt: new Date().toISOString(),
-                            notes: (payment.notes || '') + ` | Partially allocated to invoice`
+                            invoiceNumber: selectedInvoice.documentNumber || '',
+                            notes: (payment.notes || '') + ` | Partially allocated to invoice ${selectedInvoice.documentNumber || selectedInvoice.id}`
                         });
 
                         // Create new payment for remaining unallocated amount
@@ -316,7 +314,7 @@ const InvoicesPage = ({ navigateTo }) => {
                 for (const payment of invoicePayments) {
                     await paymentsAPI.update(payment.id, {
                         documentId: null,
-                        settledToDocument: false,
+                        invoiceNumber: '',
                         notes: (payment.notes || '') + ' | Moved to client account due to invoice cancellation'
                     });
                 }

@@ -4,7 +4,7 @@ import { COMPANY_INFO } from '../config';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 
-const ViewDocumentPage = ({ documentToView, navigateTo }) => {
+const ViewDocumentPage = ({ documentToView, navigateTo, previousPage }) => {
     const printRef = useRef();
     const [userSettings, setUserSettings] = useState(null);
     const [isConverting, setIsConverting] = useState(false);
@@ -425,7 +425,7 @@ const ViewDocumentPage = ({ documentToView, navigateTo }) => {
                                 Print / Save PDF
                             </button>
                         )}
-                        <button onClick={() => navigateTo(documentToView.type === 'invoice' ? 'invoices' : 'proformas')} className="flex-1 sm:flex-none bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-3 sm:px-4 rounded-lg transition-colors duration-200 text-sm sm:text-base">
+                        <button onClick={() => navigateTo(previousPage || (documentToView.type === 'invoice' ? 'invoices' : 'proformas'))} className="flex-1 sm:flex-none bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-3 sm:px-4 rounded-lg transition-colors duration-200 text-sm sm:text-base">
                             Back
                         </button>
                     </div>
