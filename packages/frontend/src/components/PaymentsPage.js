@@ -40,6 +40,7 @@ const PaymentsPage = () => {
     const [displayedPaymentsLimit, setDisplayedPaymentsLimit] = useState(50);
     const [userSettings, setUserSettings] = useState(null);
     const [isGeneratingReceiptPDF, setIsGeneratingReceiptPDF] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const receiptPrintRef = useRef(null);
 
     // Handle click outside client dropdown
@@ -113,9 +114,17 @@ const PaymentsPage = () => {
         }
     };
 
+    const [deletingPaymentIds, setDeletingPaymentIds] = useState(new Set());
+
     const handleDeletePayment = async (paymentId) => {
+        // Prevent double-click
+        if (deletingPaymentIds.has(paymentId)) {
+            return;
+        }
+
         if (!window.confirm('Are you sure you want to delete this payment?')) return;
 
+        setDeletingPaymentIds(prev => new Set(prev).add(paymentId));
         setLoading(true);
         setFeedback({ type: '', message: '' });
 
@@ -128,6 +137,11 @@ const PaymentsPage = () => {
             setFeedback({ type: 'error', message: 'Failed to delete payment' });
         } finally {
             setLoading(false);
+            setDeletingPaymentIds(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(paymentId);
+                return newSet;
+            });
         }
     };
 
@@ -141,7 +155,14 @@ const PaymentsPage = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        
+        // Prevent double submission
+        if (loading || isSubmitting) {
+            return;
+        }
+        
         setLoading(true);
+        setIsSubmitting(true);
         setFeedback({ type: '', message: '' });
 
         try {
@@ -149,13 +170,30 @@ const PaymentsPage = () => {
             if (!formData.clientId || !formData.amount) {
                 setFeedback({ type: 'error', message: 'Please select a client and enter an amount.' });
                 setLoading(false);
+                setIsSubmitting(false);
                 return;
             }
 
-            if (parseFloat(formData.amount) <= 0) {
+            const amount = parseFloat(formData.amount);
+            if (isNaN(amount) || amount <= 0) {
                 setFeedback({ type: 'error', message: 'Payment amount must be greater than 0.' });
                 setLoading(false);
+                setIsSubmitting(false);
                 return;
+            }
+
+            // Validate amount against outstanding if invoice is selected
+            if (formData.documentId) {
+                const outstanding = getOutstandingAmount(formData.documentId);
+                if (amount > outstanding) {
+                    setFeedback({ 
+                        type: 'error', 
+                        message: `Payment amount ($${amount.toFixed(2)}) cannot exceed outstanding amount ($${outstanding.toFixed(2)})` 
+                    });
+                    setLoading(false);
+                    setIsSubmitting(false);
+                    return;
+                }
             }
 
             const client = clients.find(c => c.id === formData.clientId);
@@ -170,9 +208,9 @@ const PaymentsPage = () => {
             const paymentData = {
                 clientId: formData.clientId,
                 clientName: clientName,
-                documentId: formData.documentId || null,
+                documentId: formData.documentId || null, // null = client account, not null = invoice payment
                 invoiceNumber: invoiceNumber,
-                amount: parseFloat(formData.amount),
+                amount: amount,
                 paymentDate: new Date(formData.paymentDate).toISOString(),
                 paymentMethod: formData.paymentMethod,
                 notes: formData.notes || ''
@@ -207,9 +245,10 @@ const PaymentsPage = () => {
             await fetchData(); // Refresh data
         } catch (error) {
             console.error('Error saving payment:', error);
-            setFeedback({ type: 'error', message: 'Failed to save payment' });
+            setFeedback({ type: 'error', message: 'Failed to save payment: ' + (error.message || 'Unknown error') });
         } finally {
             setLoading(false);
+            setIsSubmitting(false);
         }
     };
 
@@ -234,19 +273,27 @@ const PaymentsPage = () => {
 
     const getFilteredDocuments = (clientId) => {
         if (!clientId) {
-            return documents.filter(doc =>
-                doc.type === 'invoice' &&
-                doc.status !== 'cancelled' &&
-                doc.status !== 'paid'
-            );
+            // If no client selected, return empty array (user must select client first)
+            return [];
         }
 
-        return documents.filter(doc =>
-            doc.type === 'invoice' &&
-            doc.clientId === clientId &&
-            doc.status !== 'cancelled' &&
-            doc.status !== 'paid'
-        );
+        // Return unpaid invoices for the selected client
+        return documents.filter(doc => {
+            const type = (doc.type || '').toLowerCase();
+            const isInvoice = type === 'invoice' || type === 'invoices';
+            const isNotCancelled = doc.status !== 'cancelled' && doc.cancelled !== true && !doc.deleted;
+            
+            // Check if invoice is unpaid
+            const totalPaid = payments
+                .filter(p => p.documentId === doc.id)
+                .reduce((sum, p) => sum + (p.amount || 0), 0);
+            const isUnpaid = (doc.total || 0) > totalPaid;
+            
+            return isInvoice && 
+                   doc.clientId === clientId && 
+                   isNotCancelled && 
+                   isUnpaid;
+        });
     };
 
     // Memoized filtered payments
@@ -767,13 +814,10 @@ const PaymentsPage = () => {
                                     disabled={!formData.clientId}
                                 >
                                     <option value="">-- No Invoice (Add to Client Account) --</option>
-                                    {getFilteredDocuments(formData.clientId)
-                                        .filter(doc => {
-                                            // Only show unpaid invoices
-                                            const outstanding = getOutstandingAmount(doc.id);
-                                            return outstanding > 0;
-                                        })
-                                        .map(doc => {
+                                    {getFilteredDocuments(formData.clientId).length === 0 && formData.clientId ? (
+                                        <option value="" disabled>No unpaid invoices for this client</option>
+                                    ) : (
+                                        getFilteredDocuments(formData.clientId).map(doc => {
                                             const docInfo = getDocumentInfo(doc.id);
                                             const outstanding = getOutstandingAmount(doc.id);
                                             return (
@@ -781,31 +825,61 @@ const PaymentsPage = () => {
                                                     {docInfo.number} - ${docInfo.total.toFixed(2)} (Due: ${outstanding.toFixed(2)})
                                                 </option>
                                             );
-                                        })}
+                                        })
+                                    )}
                                 </select>
                                 <p className="text-xs text-gray-500 mt-1">
                                     {formData.documentId
                                         ? '✓ Payment will be allocated directly to the selected invoice'
                                         : '→ Payment will be added to client account balance for later allocation'}
                                 </p>
-                                <p className="text-xs text-yellow-600 mt-1">
-                                    ⚠ Note: Payments cannot be made on proformas, only on invoices
-                                </p>
+                                {!formData.clientId && (
+                                    <p className="text-xs text-yellow-600 mt-1">
+                                        ⚠ Please select a client first to see their unpaid invoices
+                                    </p>
+                                )}
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Amount *</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Amount * 
+                                    {formData.documentId && (
+                                        <span className="text-xs text-gray-500 ml-2">
+                                            (Max: ${getOutstandingAmount(formData.documentId).toFixed(2)})
+                                        </span>
+                                    )}
+                                </label>
                                 <input
                                     type="number"
                                     name="amount"
                                     value={formData.amount}
-                                    onChange={handleInputChange}
+                                    onChange={(e) => {
+                                        const value = e.target.value;
+                                        handleInputChange(e);
+                                        // Validate amount if invoice is selected
+                                        if (formData.documentId && value) {
+                                            const maxAmount = getOutstandingAmount(formData.documentId);
+                                            const enteredAmount = parseFloat(value);
+                                            if (enteredAmount > maxAmount) {
+                                                setFeedback({ 
+                                                    type: 'error', 
+                                                    message: `Amount cannot exceed outstanding amount of $${maxAmount.toFixed(2)}` 
+                                                });
+                                            }
+                                        }
+                                    }}
                                     step="0.01"
                                     min="0.01"
+                                    max={formData.documentId ? getOutstandingAmount(formData.documentId) : undefined}
                                     required
                                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
                                     placeholder="0.00"
                                 />
+                                {formData.documentId && (
+                                    <p className="text-xs text-blue-600 mt-1">
+                                        Outstanding amount: ${getOutstandingAmount(formData.documentId).toFixed(2)}
+                                    </p>
+                                )}
                             </div>
 
                             <div>
@@ -872,10 +946,10 @@ const PaymentsPage = () => {
                             </button>
                             <button
                                 type="submit"
-                                disabled={loading}
-                                className="w-full sm:w-auto px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:bg-indigo-300"
+                                disabled={loading || isSubmitting}
+                                className="w-full sm:w-auto px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:bg-indigo-300 disabled:cursor-not-allowed"
                             >
-                                {loading ? 'Saving...' : (editingPayment ? 'Update Payment' : 'Add Payment')}
+                                {loading || isSubmitting ? 'Processing...' : (editingPayment ? 'Update Payment' : 'Add Payment')}
                             </button>
                         </div>
                     </form>
@@ -1104,9 +1178,10 @@ const PaymentsPage = () => {
                                                 </button>
                                                 <button
                                                     onClick={() => handleDeletePayment(payment.id)}
-                                                    className="text-red-600 hover:text-red-900 text-xs sm:text-sm px-2 py-1 rounded hover:bg-red-50"
+                                                    disabled={deletingPaymentIds.has(payment.id)}
+                                                    className="text-red-600 hover:text-red-900 text-xs sm:text-sm px-2 py-1 rounded hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
                                                 >
-                                                    Delete
+                                                    {deletingPaymentIds.has(payment.id) ? 'Deleting...' : 'Delete'}
                                                 </button>
                                             </div>
                                         </td>

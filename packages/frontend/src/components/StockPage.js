@@ -174,8 +174,17 @@ const StockPage = () => {
         setShowForm(true);
     };
 
+    const [deletingItemIds, setDeletingItemIds] = useState(new Set());
+
     const handleDeleteItem = async (itemId) => {
+        // Prevent double-click
+        if (deletingItemIds.has(itemId)) {
+            return;
+        }
+
         if (!window.confirm('Are you sure you want to delete this item?')) return;
+
+        setDeletingItemIds(prev => new Set(prev).add(itemId));
 
         try {
             await stockAPI.delete(itemId);
@@ -183,6 +192,12 @@ const StockPage = () => {
         } catch (err) {
             console.error('Error deleting item:', err);
             setError('Failed to delete item');
+        } finally {
+            setDeletingItemIds(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(itemId);
+                return newSet;
+            });
         }
     };
 
@@ -720,7 +735,8 @@ const StockPage = () => {
                                                 </button>
                                                 <button
                                                     onClick={() => handleDeleteItem(item.id)}
-                                                    className="text-red-600 hover:text-red-800"
+                                                    disabled={deletingItemIds.has(item.id)}
+                                                    className="text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed"
                                                     title="Delete"
                                                 >
                                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

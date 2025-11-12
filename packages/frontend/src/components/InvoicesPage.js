@@ -298,7 +298,16 @@ const InvoicesPage = ({ navigateTo }) => {
         }
     };
 
+    const [cancellingInvoiceIds, setCancellingInvoiceIds] = useState(new Set());
+
     const cancelInvoiceNow = async (invoiceId, movePaymentsToClientAccount) => {
+        // Prevent double-click
+        if (cancellingInvoiceIds.has(invoiceId)) {
+            return;
+        }
+
+        setCancellingInvoiceIds(prev => new Set(prev).add(invoiceId));
+
         try {
             await documentsAPI.update(invoiceId, {
                 cancelled: true,
@@ -329,6 +338,12 @@ const InvoicesPage = ({ navigateTo }) => {
         } catch (error) {
             console.error("Error cancelling invoice: ", error);
             alert("Error cancelling invoice. Please try again.");
+        } finally {
+            setCancellingInvoiceIds(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(invoiceId);
+                return newSet;
+            });
         }
     };
 
@@ -668,10 +683,11 @@ const InvoicesPage = ({ navigateTo }) => {
                                                     )}
                                                     <button 
                                                         onClick={() => setConfirmCancel(doc.id)} 
-                                                        className="text-red-600 hover:text-red-800 font-medium py-1 px-2 rounded-lg text-sm"
+                                                        disabled={cancellingInvoiceIds.has(doc.id)}
+                                                        className="text-red-600 hover:text-red-800 font-medium py-1 px-2 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                                                         title="Cancel Invoice"
                                                     >
-                                                        Cancel
+                                                        {cancellingInvoiceIds.has(doc.id) ? 'Cancelling...' : 'Cancel'}
                                                     </button>
                                                 </div>
                                             </td>
@@ -736,15 +752,17 @@ const InvoicesPage = ({ navigateTo }) => {
                         <div className="flex flex-col gap-2">
                             <button
                                 onClick={() => cancelInvoiceNow(pendingCancelInvoice.id, true)}
-                                className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium"
+                                disabled={cancellingInvoiceIds.has(pendingCancelInvoice.id)}
+                                className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                Move to Client Account Balance
+                                {cancellingInvoiceIds.has(pendingCancelInvoice.id) ? 'Processing...' : 'Move to Client Account Balance'}
                             </button>
                             <button
                                 onClick={() => cancelInvoiceNow(pendingCancelInvoice.id, false)}
-                                className="w-full px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium"
+                                disabled={cancellingInvoiceIds.has(pendingCancelInvoice.id)}
+                                className="w-full px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                Payment Reimbursed (Keep History Only)
+                                {cancellingInvoiceIds.has(pendingCancelInvoice.id) ? 'Processing...' : 'Payment Reimbursed (Keep History Only)'}
                             </button>
                             <button
                                 onClick={() => {
@@ -775,9 +793,10 @@ const InvoicesPage = ({ navigateTo }) => {
                             </button>
                             <button
                                 onClick={() => handleCancelInvoice(confirmCancel)}
-                                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                                disabled={cancellingInvoiceIds.has(confirmCancel)}
+                                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                Cancel Invoice
+                                {cancellingInvoiceIds.has(confirmCancel) ? 'Cancelling...' : 'Cancel Invoice'}
                             </button>
                         </div>
                     </div>

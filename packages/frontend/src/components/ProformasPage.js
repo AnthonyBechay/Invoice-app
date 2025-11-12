@@ -338,12 +338,22 @@ const ProformasPage = ({ navigateTo }) => {
         }
     };
 
+    const [deletingProformaIds, setDeletingProformaIds] = useState(new Set());
+
     const handleDeleteProforma = async (proformaId) => {
         if (!user) return;
+
+        // Prevent double-click
+        if (deletingProformaIds.has(proformaId)) {
+            return;
+        }
 
         if (!window.confirm('Are you sure you want to delete this proforma? This action cannot be undone.')) {
             return;
         }
+
+        setDeletingProformaIds(prev => new Set(prev).add(proformaId));
+        setLoading(true);
 
         try {
             await documentsAPI.delete(proformaId);
@@ -351,6 +361,14 @@ const ProformasPage = ({ navigateTo }) => {
             await fetchProformas();
         } catch (error) {
             console.error("Error deleting proforma: ", error);
+            alert('Error deleting proforma. Please try again.');
+        } finally {
+            setLoading(false);
+            setDeletingProformaIds(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(proformaId);
+                return newSet;
+            });
         }
     };
 
@@ -562,7 +580,8 @@ const ProformasPage = ({ navigateTo }) => {
                                                 </button>
                                                 <button
                                                     onClick={() => setConfirmDelete(doc.id)}
-                                                    className="text-red-600 hover:text-red-800 font-medium py-1 px-2 rounded-lg text-sm"
+                                                    disabled={deletingProformaIds.has(doc.id) || convertingIds.has(doc.id)}
+                                                    className="text-red-600 hover:text-red-800 font-medium py-1 px-2 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                                                 >
                                                     Delete
                                                 </button>
@@ -618,9 +637,10 @@ const ProformasPage = ({ navigateTo }) => {
                             </button>
                             <button
                                 onClick={() => handleDeleteProforma(confirmDelete)}
-                                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg"
+                                disabled={deletingProformaIds.has(confirmDelete) || loading}
+                                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                Delete
+                                {deletingProformaIds.has(confirmDelete) ? 'Deleting...' : 'Delete'}
                             </button>
                         </div>
                     </div>
