@@ -487,13 +487,13 @@ const InvoicesPage = ({ navigateTo }) => {
             header: true,
             complete: async (results) => {
                 try {
-                    // Fetch clients and stock items for matching
+                    // Fetch clients and stock items for matching (they should already be imported)
                     let clients = [];
                     try {
                         const { clientsAPI } = await import('../services/api');
                         clients = await clientsAPI.getAll();
                     } catch (e) {
-                        console.warn('Could not fetch clients, will create clients by name');
+                        console.warn('Could not fetch clients, will match by name only');
                     }
                     
                     let stockItems = [];
@@ -528,35 +528,19 @@ const InvoicesPage = ({ navigateTo }) => {
                                     }
                                 } catch (e) { }
 
-                                // Find or create client by name
+                                // Find client by name (should already be imported)
                                 const clientName = (row['Client Name'] || '').trim();
                                 let clientId = null;
                                 
-                                if (clientName) {
+                                if (clientName && clients.length > 0) {
                                     const existingClient = clients.find(c => 
                                         c.name && c.name.trim().toLowerCase() === clientName.toLowerCase()
                                     );
                                     
                                     if (existingClient) {
                                         clientId = existingClient.id;
-                                    } else {
-                                        // Create client if doesn't exist
-                                        try {
-                                            const { clientsAPI } = await import('../services/api');
-                                            const newClient = await clientsAPI.create({
-                                                name: clientName,
-                                                email: row['Client Email'] || '',
-                                                phone: row['Client Phone'] || '',
-                                                location: row['Client Location'] || '',
-                                                vatNumber: row['Client VAT Number'] || ''
-                                            });
-                                            clientId = newClient.id;
-                                            clients.push(newClient); // Add to cache
-                                        } catch (err) {
-                                            console.error('Error creating client:', err);
-                                            // Continue without clientId - backend will handle by name
-                                        }
                                     }
+                                    // Don't create clients - they should already be imported
                                 }
                                 
                                 const documentItems = await Promise.all(items.map(async (item) => {
@@ -614,7 +598,7 @@ const InvoicesPage = ({ navigateTo }) => {
                                 const vatAmount = parseFloat(row['VAT Amount'] || 0);
                                 const total = subtotal + vatAmount;
 
-                                let notes = row['Notes'] || '';
+                                let notes = (row['Notes'] || '').trim();
                                 if (realMandays && typeof realMandays === 'object') {
                                     const realMandaysDays = realMandays.days || 0;
                                     const realMandaysPeople = realMandays.people || 0;
@@ -626,22 +610,49 @@ const InvoicesPage = ({ navigateTo }) => {
                                     }
                                 }
 
+                                // Parse status - ensure it's a valid DocumentStatus
+                                let status = (row['Status'] || 'DRAFT').trim().toUpperCase();
+                                const validStatuses = ['DRAFT', 'SENT', 'PAID', 'CANCELLED', 'CONVERTED'];
+                                if (!validStatuses.includes(status)) {
+                                    status = 'DRAFT';
+                                }
+
+                                // Parse date correctly
+                                let dateStr = row['Date'] || '';
+                                let documentDate = new Date();
+                                if (dateStr) {
+                                    try {
+                                        // If it's already ISO format
+                                        if (dateStr.includes('T') || dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                                            documentDate = new Date(dateStr);
+                                        } else {
+                                            // Try parsing as is
+                                            documentDate = new Date(dateStr);
+                                        }
+                                        if (isNaN(documentDate.getTime())) {
+                                            documentDate = new Date();
+                                        }
+                                    } catch (e) {
+                                        documentDate = new Date();
+                                    }
+                                }
+
                                 return {
                                     type: 'INVOICE',
                                     documentNumber: row['Document Number'] || '',
                                     clientId: clientId,
                                     clientName: clientName,
-                                    clientEmail: row['Client Email'] || '',
-                                    clientPhone: row['Client Phone'] || '',
-                                    clientLocation: row['Client Location'] || '',
-                                    clientVatNumber: row['Client VAT Number'] || '',
-                                    date: new Date(row['Date'] || new Date()).toISOString(),
+                                    clientEmail: (row['Client Email'] || '').trim(),
+                                    clientPhone: (row['Client Phone'] || '').trim(),
+                                    clientLocation: (row['Client Location'] || '').trim(),
+                                    clientVatNumber: (row['Client VAT Number'] || '').trim(),
+                                    date: documentDate.toISOString(),
                                     subtotal: subtotal,
                                     taxRate: 0,
                                     taxAmount: vatAmount,
                                     total: total,
                                     notes: notes,
-                                    status: (row['Status'] || 'DRAFT').toUpperCase(),
+                                    status: status,
                                     items: documentItems
                                 };
                             })
