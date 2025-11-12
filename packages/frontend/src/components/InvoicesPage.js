@@ -509,16 +509,23 @@ const InvoicesPage = ({ navigateTo }) => {
                                     const allRowValues = Object.values(row);
                                     let itemsJson = row['Items JSON'] || '';
                                     
-                                    // If Items JSON doesn't look like JSON (might be misaligned), search all fields
-                                    if (!itemsJson.trim().startsWith('[') && !itemsJson.trim().startsWith('{')) {
-                                        // Search through all fields to find the one containing JSON array
+                                    // Search through ALL fields to find the one containing JSON array
+                                    // This handles cases where date splitting causes misalignment
+                                    if (!itemsJson || (!itemsJson.trim().startsWith('[') && !itemsJson.trim().startsWith('{'))) {
                                         for (const fieldValue of allRowValues) {
                                             if (fieldValue && typeof fieldValue === 'string') {
                                                 const trimmed = fieldValue.trim();
-                                                // Check if this looks like a JSON array with items
-                                                if ((trimmed.startsWith('[') || trimmed.includes('name') || trimmed.includes('qty') || trimmed.includes('unitPrice')) &&
+                                                // Check if this looks like a JSON array/object with items
+                                                if ((trimmed.startsWith('[') || trimmed.startsWith('{')) &&
                                                     (trimmed.includes('name') || trimmed.includes('qty') || trimmed.includes('unitPrice'))) {
                                                     itemsJson = trimmed;
+                                                    console.log('Found Items JSON in misaligned field:', itemsJson);
+                                                    break;
+                                                }
+                                                // Also check for unquoted format: [{name:value,qty:1}]
+                                                if (trimmed.includes('name:') && (trimmed.includes('qty:') || trimmed.includes('unitPrice:'))) {
+                                                    itemsJson = trimmed;
+                                                    console.log('Found Items JSON (unquoted format) in misaligned field:', itemsJson);
                                                     break;
                                                 }
                                             }
@@ -537,21 +544,43 @@ const InvoicesPage = ({ navigateTo }) => {
                                     
                                     // Try to parse as JSON
                                     if (itemsJson && itemsJson.startsWith('[')) {
-                                        items = JSON.parse(itemsJson);
+                                        try {
+                                            items = JSON.parse(itemsJson);
+                                        } catch (e) {
+                                            // If parsing fails, try to fix unquoted format
+                                            // Pattern: [{name:Flexible 40 cm ,qty:1,unitPrice:4}]
+                                            console.log('JSON parse failed, attempting to fix unquoted format:', itemsJson);
+                                            // Fix unquoted keys: name: -> "name":
+                                            itemsJson = itemsJson.replace(/([{,\[]\s*)(\w+)\s*:/g, '$1"$2":');
+                                            // Fix unquoted string values (values that aren't numbers and aren't already quoted)
+                                            // Match: : value, or : value} or : value]
+                                            itemsJson = itemsJson.replace(/:\s*([^",\d\[\]{}][^,}\]]*?)([,}\]])/g, (match, value, end) => {
+                                                const trimmedValue = value.trim();
+                                                // If value is not a number and not already quoted
+                                                if (trimmedValue && isNaN(parseFloat(trimmedValue))) {
+                                                    // Escape any quotes in the value
+                                                    const escapedValue = trimmedValue.replace(/"/g, '\\"');
+                                                    return ': "' + escapedValue + '"' + end;
+                                                }
+                                                return match;
+                                            });
+                                            items = JSON.parse(itemsJson);
+                                            console.log('Successfully fixed and parsed JSON:', items);
+                                        }
                                     } else if (itemsJson && itemsJson.includes('name')) {
                                         // Try to fix common JSON issues - handle unquoted keys
-                                        // Pattern: {name:value,qty:1,unitPrice:2} -> {"name":"value","qty":1,"unitPrice":2}
                                         // First, ensure it's wrapped in array brackets if not
                                         if (!itemsJson.startsWith('[')) {
                                             itemsJson = '[' + itemsJson + ']';
                                         }
-                                        // Fix unquoted keys and values
-                                        itemsJson = itemsJson.replace(/([{,]\s*)(\w+):/g, '$1"$2":');
-                                        // Fix unquoted string values (but not numbers)
-                                        itemsJson = itemsJson.replace(/:\s*([^",\d\s][^,}]*?)([,}])/g, (match, value, end) => {
-                                            // If value is not a number and not already quoted
-                                            if (isNaN(parseFloat(value.trim()))) {
-                                                return ': "' + value.trim() + '"' + end;
+                                        // Fix unquoted keys
+                                        itemsJson = itemsJson.replace(/([{,\[]\s*)(\w+)\s*:/g, '$1"$2":');
+                                        // Fix unquoted string values
+                                        itemsJson = itemsJson.replace(/:\s*([^",\d\[\]{}][^,}\]]*?)([,}\]])/g, (match, value, end) => {
+                                            const trimmedValue = value.trim();
+                                            if (trimmedValue && isNaN(parseFloat(trimmedValue))) {
+                                                const escapedValue = trimmedValue.replace(/"/g, '\\"');
+                                                return ': "' + escapedValue + '"' + end;
                                             }
                                             return match;
                                         });
@@ -562,8 +591,14 @@ const InvoicesPage = ({ navigateTo }) => {
                                     if (!Array.isArray(items)) {
                                         items = [];
                                     }
+                                    
+                                    // Filter out empty items
+                                    items = items.filter(item => item && (item.name || item.qty || item.quantity));
+                                    
+                                    console.log('Parsed items:', items.length, items);
                                 } catch (e) {
-                                    console.warn('Error parsing items JSON:', e, 'Raw value:', row['Items JSON'], 'All row values:', Object.values(row));
+                                    console.error('Error parsing items JSON:', e);
+                                    console.warn('Raw value:', row['Items JSON'], 'All row values:', Object.values(row));
                                     items = [];
                                 }
 
@@ -637,8 +672,11 @@ const InvoicesPage = ({ navigateTo }) => {
                                     };
                                 }));
 
+                                // Add labor price as item ONLY if there are no other items
+                                // Labor should be stored in laborPrice field, not as an item
                                 const laborPrice = parseFloat(row['Labor Price'] || 0);
-                                if (laborPrice > 0) {
+                                // Only add labor as item if there are no stock items (items array is empty)
+                                if (laborPrice > 0 && documentItems.length === 0) {
                                     documentItems.push({
                                         stockId: null,
                                         name: 'Labor',
@@ -755,6 +793,10 @@ const InvoicesPage = ({ navigateTo }) => {
                                     }
                                 }
 
+                                // Parse VAT Applied
+                                const vatApplied = (row['VAT Applied'] || '').toString().toLowerCase() === 'yes' || 
+                                                   (row['VAT Applied'] || '').toString().toLowerCase() === 'true';
+
                                 return {
                                     type: 'INVOICE',
                                     documentNumber: row['Document Number'] || '',
@@ -765,6 +807,10 @@ const InvoicesPage = ({ navigateTo }) => {
                                     taxRate: 0,
                                     taxAmount: vatAmount,
                                     total: total,
+                                    laborPrice: laborPrice,
+                                    mandays: mandays,
+                                    realMandays: realMandays,
+                                    vatApplied: vatApplied,
                                     notes: notes,
                                     status: status,
                                     items: documentItems
