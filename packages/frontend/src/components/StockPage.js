@@ -270,7 +270,7 @@ const StockPage = () => {
                             size: row['Size'] || '',
                             weight: row['Weight'] || '',
                             color: row['Color'] || '',
-                            supplier: row['Supplier'] || '',
+                            supplierName: row['Supplier'] || '',
                             supplierCode: row['Supplier Code'] || '',
                             warranty: row['Warranty'] || '',
                             notes: row['Notes'] || ''

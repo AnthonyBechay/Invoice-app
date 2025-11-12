@@ -183,102 +183,183 @@ const ProformasPage = ({ navigateTo }) => {
             header: true,
             complete: async (results) => {
                 try {
-                    const validDocuments = results.data
-                        .filter(row => row['Document Number'] && row['Document Number'].trim() !== '')
-                        .map(row => {
-                            // Parse items JSON
-                            let items = [];
-                            try {
-                                items = JSON.parse(row['Items JSON'] || '[]');
-                            } catch (e) {
-                                items = [];
-                            }
+                    // Fetch clients and stock items for matching
+                    const [clientsData, stockData] = await Promise.all([
+                        documentsAPI.getAll('client').catch(() => []),
+                        documentsAPI.getAll('stock').catch(() => [])
+                    ]);
+                    
+                    // Use clientsAPI if available, otherwise use documentsAPI
+                    let clients = [];
+                    try {
+                        const { clientsAPI } = await import('../services/api');
+                        clients = await clientsAPI.getAll();
+                    } catch (e) {
+                        // Fallback - try to get clients from documents or use empty array
+                        console.warn('Could not fetch clients, will create clients by name');
+                    }
+                    
+                    let stockItems = [];
+                    try {
+                        const { stockAPI } = await import('../services/api');
+                        stockItems = await stockAPI.getAll();
+                    } catch (e) {
+                        console.warn('Could not fetch stock items');
+                    }
 
-                            // Parse mandays and realMandays if they exist
-                            let mandays = null;
-                            let realMandays = null;
-                            try {
-                                if (row['Mandays'] && row['Mandays'].trim() !== '') {
-                                    mandays = JSON.parse(row['Mandays']);
+                    const validDocuments = await Promise.all(
+                        results.data
+                            .filter(row => row['Document Number'] && row['Document Number'].trim() !== '')
+                            .map(async (row) => {
+                                // Parse items JSON
+                                let items = [];
+                                try {
+                                    items = JSON.parse(row['Items JSON'] || '[]');
+                                } catch (e) {
+                                    items = [];
                                 }
-                            } catch (e) {
-                                // Ignore
-                            }
-                            try {
-                                if (row['Real Mandays'] && row['Real Mandays'].trim() !== '') {
-                                    realMandays = JSON.parse(row['Real Mandays']);
-                                }
-                            } catch (e) {
-                                // Ignore
-                            }
 
-                            // Find client by name
-                            const clientName = row['Client Name'] || '';
-                            
-                            // Build items array with laborPrice and mandays as items
-                            const documentItems = [...items];
-                            
-                            // Add labor price as item if exists
-                            const laborPrice = parseFloat(row['Labor Price'] || 0);
-                            if (laborPrice > 0) {
-                                documentItems.push({
-                                    name: 'Labor',
-                                    description: 'Labor',
-                                    quantity: 1,
-                                    unitPrice: laborPrice,
-                                    total: laborPrice
-                                });
-                            }
-                            
-                            // Add mandays as item if exists
-                            if (mandays && typeof mandays === 'object') {
-                                const mandaysDays = mandays.days || 0;
-                                const mandaysPeople = mandays.people || 0;
-                                const mandaysCostPerDay = mandays.costPerDay || 0;
-                                const mandaysTotal = mandaysDays * mandaysPeople * mandaysCostPerDay;
-                                if (mandaysTotal > 0) {
+                                // Parse mandays and realMandays if they exist
+                                let mandays = null;
+                                let realMandays = null;
+                                try {
+                                    if (row['Mandays'] && row['Mandays'].trim() !== '') {
+                                        mandays = JSON.parse(row['Mandays']);
+                                    }
+                                } catch (e) {
+                                    // Ignore
+                                }
+                                try {
+                                    if (row['Real Mandays'] && row['Real Mandays'].trim() !== '') {
+                                        realMandays = JSON.parse(row['Real Mandays']);
+                                    }
+                                } catch (e) {
+                                    // Ignore
+                                }
+
+                                // Find or create client by name
+                                const clientName = (row['Client Name'] || '').trim();
+                                let clientId = null;
+                                
+                                if (clientName) {
+                                    const existingClient = clients.find(c => 
+                                        c.name && c.name.trim().toLowerCase() === clientName.toLowerCase()
+                                    );
+                                    
+                                    if (existingClient) {
+                                        clientId = existingClient.id;
+                                    } else {
+                                        // Create client if doesn't exist
+                                        try {
+                                            const { clientsAPI } = await import('../services/api');
+                                            const newClient = await clientsAPI.create({
+                                                name: clientName,
+                                                email: row['Client Email'] || '',
+                                                phone: row['Client Phone'] || '',
+                                                location: row['Client Location'] || '',
+                                                vatNumber: row['Client VAT Number'] || ''
+                                            });
+                                            clientId = newClient.id;
+                                            clients.push(newClient); // Add to cache
+                                        } catch (err) {
+                                            console.error('Error creating client:', err);
+                                            // Continue without clientId - backend will handle by name
+                                        }
+                                    }
+                                }
+                                
+                                // Build items array with laborPrice and mandays as items
+                                const documentItems = await Promise.all(items.map(async (item) => {
+                                    // Try to match stock item by name
+                                    let stockId = null;
+                                    if (item.name && stockItems.length > 0) {
+                                        const matchedStock = stockItems.find(s => 
+                                            s.name && s.name.trim().toLowerCase() === item.name.trim().toLowerCase()
+                                        );
+                                        if (matchedStock) {
+                                            stockId = matchedStock.id;
+                                        }
+                                    }
+                                    
+                                    return {
+                                        stockId: stockId,
+                                        name: item.name || '',
+                                        description: item.description || '',
+                                        quantity: parseFloat(item.qty || item.quantity || 0),
+                                        unitPrice: parseFloat(item.unitPrice || 0),
+                                        total: parseFloat(item.total || (item.qty || item.quantity || 0) * (item.unitPrice || 0))
+                                    };
+                                }));
+                                
+                                // Add labor price as item if exists
+                                const laborPrice = parseFloat(row['Labor Price'] || 0);
+                                if (laborPrice > 0) {
                                     documentItems.push({
-                                        name: 'Mandays',
-                                        description: `Mandays (${mandaysDays} days × ${mandaysPeople} people × $${mandaysCostPerDay}/day)`,
+                                        stockId: null,
+                                        name: 'Labor',
+                                        description: 'Labor',
                                         quantity: 1,
-                                        unitPrice: mandaysTotal,
-                                        total: mandaysTotal
+                                        unitPrice: laborPrice,
+                                        total: laborPrice
                                     });
                                 }
-                            }
-
-                            // Calculate subtotal from items
-                            const subtotal = documentItems.reduce((sum, item) => sum + (parseFloat(item.total) || 0), 0);
-                            const vatAmount = parseFloat(row['VAT Amount'] || 0);
-                            const total = subtotal + vatAmount;
-
-                            // Add realMandays to notes if exists
-                            let notes = row['Notes'] || '';
-                            if (realMandays && typeof realMandays === 'object') {
-                                const realMandaysDays = realMandays.days || 0;
-                                const realMandaysPeople = realMandays.people || 0;
-                                const realMandaysCostPerDay = realMandays.costPerDay || 0;
-                                const realMandaysTotal = realMandaysDays * realMandaysPeople * realMandaysCostPerDay;
-                                if (realMandaysTotal > 0) {
-                                    const realMandaysNote = `[Real Mandays Cost: ${realMandaysDays} days × ${realMandaysPeople} people × $${realMandaysCostPerDay}/day = $${realMandaysTotal}]`;
-                                    notes = notes ? `${notes}\n\n${realMandaysNote}` : realMandaysNote;
+                                
+                                // Add mandays as item if exists
+                                if (mandays && typeof mandays === 'object') {
+                                    const mandaysDays = mandays.days || 0;
+                                    const mandaysPeople = mandays.people || 0;
+                                    const mandaysCostPerDay = mandays.costPerDay || 0;
+                                    const mandaysTotal = mandaysDays * mandaysPeople * mandaysCostPerDay;
+                                    if (mandaysTotal > 0) {
+                                        documentItems.push({
+                                            stockId: null,
+                                            name: 'Mandays',
+                                            description: `Mandays (${mandaysDays} days × ${mandaysPeople} people × $${mandaysCostPerDay}/day)`,
+                                            quantity: 1,
+                                            unitPrice: mandaysTotal,
+                                            total: mandaysTotal
+                                        });
+                                    }
                                 }
-                            }
 
-                            return {
-                                type: 'PROFORMA',
-                                documentNumber: row['Document Number'] || '',
-                                clientName: clientName,
-                                date: new Date(row['Date'] || new Date()).toISOString(),
-                                subtotal: subtotal,
-                                taxRate: 0,
-                                taxAmount: vatAmount,
-                                total: total,
-                                notes: notes,
-                                status: (row['Status'] || 'DRAFT').toUpperCase(),
-                                items: documentItems
-                            };
-                        });
+                                // Calculate subtotal from items
+                                const subtotal = documentItems.reduce((sum, item) => sum + (parseFloat(item.total) || 0), 0);
+                                const vatAmount = parseFloat(row['VAT Amount'] || 0);
+                                const total = subtotal + vatAmount;
+
+                                // Add realMandays to notes if exists
+                                let notes = row['Notes'] || '';
+                                if (realMandays && typeof realMandays === 'object') {
+                                    const realMandaysDays = realMandays.days || 0;
+                                    const realMandaysPeople = realMandays.people || 0;
+                                    const realMandaysCostPerDay = realMandays.costPerDay || 0;
+                                    const realMandaysTotal = realMandaysDays * realMandaysPeople * realMandaysCostPerDay;
+                                    if (realMandaysTotal > 0) {
+                                        const realMandaysNote = `[Real Mandays Cost: ${realMandaysDays} days × ${realMandaysPeople} people × $${realMandaysCostPerDay}/day = $${realMandaysTotal}]`;
+                                        notes = notes ? `${notes}\n\n${realMandaysNote}` : realMandaysNote;
+                                    }
+                                }
+
+                                return {
+                                    type: 'PROFORMA',
+                                    documentNumber: row['Document Number'] || '',
+                                    clientId: clientId,
+                                    clientName: clientName,
+                                    clientEmail: row['Client Email'] || '',
+                                    clientPhone: row['Client Phone'] || '',
+                                    clientLocation: row['Client Location'] || '',
+                                    clientVatNumber: row['Client VAT Number'] || '',
+                                    date: new Date(row['Date'] || new Date()).toISOString(),
+                                    subtotal: subtotal,
+                                    taxRate: 0,
+                                    taxAmount: vatAmount,
+                                    total: total,
+                                    notes: notes,
+                                    status: (row['Status'] || 'DRAFT').toUpperCase(),
+                                    items: documentItems
+                                };
+                            })
+                    );
 
                     if (validDocuments.length === 0) {
                         alert('No valid proformas found in CSV file');
