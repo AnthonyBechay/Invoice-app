@@ -618,18 +618,64 @@ const InvoicesPage = ({ navigateTo }) => {
                                 }
 
                                 // Parse date correctly
+                                // Date might be split like "November 1, 2025 at 12:00:00 AM UTC+2"
+                                // Or might be incorrectly parsed as "2001-11-01,2025 at 12:00:00 AM UTC+2"
                                 let dateStr = row['Date'] || '';
                                 let documentDate = new Date();
                                 if (dateStr) {
                                     try {
-                                        // If it's already ISO format
-                                        if (dateStr.includes('T') || dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
-                                            documentDate = new Date(dateStr);
-                                        } else {
-                                            // Try parsing as is
-                                            documentDate = new Date(dateStr);
+                                        // Check if date contains comma and year pattern (means it was split)
+                                        if (dateStr.includes(',') && dateStr.match(/\d{4}/)) {
+                                            // Try to extract the correct year (should be 2025, not 2001)
+                                            const yearMatch = dateStr.match(/(\d{4})/g);
+                                            if (yearMatch && yearMatch.length > 0) {
+                                                // Find the year that's in the 2000-2100 range
+                                                const validYear = yearMatch.find(y => parseInt(y) >= 2000 && parseInt(y) < 2100);
+                                                if (validYear) {
+                                                    // Reconstruct date string
+                                                    const monthMatch = dateStr.match(/(\w+)\s+(\d+)/);
+                                                    if (monthMatch) {
+                                                        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                                                                          'July', 'August', 'September', 'October', 'November', 'December'];
+                                                        const monthName = monthMatch[1];
+                                                        const day = parseInt(monthMatch[2]);
+                                                        const year = parseInt(validYear);
+                                                        const monthIndex = monthNames.findIndex(m => m.toLowerCase() === monthName.toLowerCase());
+                                                        
+                                                        if (monthIndex !== -1) {
+                                                            documentDate = new Date(year, monthIndex, day);
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
+                                        
+                                        // If still not parsed, try standard parsing
                                         if (isNaN(documentDate.getTime())) {
+                                            // Remove "at" and timezone info
+                                            let cleanDateStr = dateStr.split('at')[0].trim();
+                                            // Parse the date string - handle "Month Day, Year" format
+                                            const dateMatch = cleanDateStr.match(/(\w+)\s+(\d+),?\s+(\d+)/);
+                                            if (dateMatch) {
+                                                const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                                                                  'July', 'August', 'September', 'October', 'November', 'December'];
+                                                const monthName = dateMatch[1];
+                                                const day = parseInt(dateMatch[2]);
+                                                const year = parseInt(dateMatch[3]);
+                                                const monthIndex = monthNames.findIndex(m => m.toLowerCase() === monthName.toLowerCase());
+                                                
+                                                if (monthIndex !== -1 && year >= 2000 && year < 2100) {
+                                                    documentDate = new Date(year, monthIndex, day);
+                                                } else {
+                                                    documentDate = new Date(cleanDateStr);
+                                                }
+                                            } else {
+                                                documentDate = new Date(cleanDateStr);
+                                            }
+                                        }
+                                        
+                                        // Validate the parsed date
+                                        if (isNaN(documentDate.getTime()) || documentDate.getFullYear() < 2000 || documentDate.getFullYear() >= 2100) {
                                             documentDate = new Date();
                                         }
                                     } catch (e) {
@@ -642,10 +688,6 @@ const InvoicesPage = ({ navigateTo }) => {
                                     documentNumber: row['Document Number'] || '',
                                     clientId: clientId,
                                     clientName: clientName,
-                                    clientEmail: (row['Client Email'] || '').trim(),
-                                    clientPhone: (row['Client Phone'] || '').trim(),
-                                    clientLocation: (row['Client Location'] || '').trim(),
-                                    clientVatNumber: (row['Client VAT Number'] || '').trim(),
                                     date: documentDate.toISOString(),
                                     subtotal: subtotal,
                                     taxRate: 0,
