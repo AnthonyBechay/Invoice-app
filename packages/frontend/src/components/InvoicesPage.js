@@ -771,7 +771,9 @@ const InvoicesPage = ({ navigateTo }) => {
                                     }
                                 }
 
-                                const subtotal = documentItems.reduce((sum, item) => sum + (parseFloat(item.total) || 0), 0);
+                                // Calculate subtotal from items + laborPrice
+                                const itemsTotal = documentItems.reduce((sum, item) => sum + (parseFloat(item.total) || 0), 0);
+                                const subtotal = itemsTotal + laborPrice; // Include laborPrice in subtotal
                                 const vatAmount = parseFloat(row['VAT Amount'] || 0);
                                 const total = subtotal + vatAmount;
 
