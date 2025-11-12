@@ -107,8 +107,15 @@ const Dashboard = ({ navigateTo }) => {
             });
 
             // Filter active documents only (not converted proformas)
-            const proformas = docs.filter(d => d.type === 'proforma' && !d.convertedTo);
-            const invoices = docs.filter(d => d.type === 'invoice');
+            // Handle both uppercase and lowercase type values
+            const proformas = docs.filter(d => {
+                const type = (d.type || '').toLowerCase();
+                return (type === 'proforma' || type === 'proformas') && !d.convertedTo;
+            });
+            const invoices = docs.filter(d => {
+                const type = (d.type || '').toLowerCase();
+                return type === 'invoice' || type === 'invoices';
+            });
 
             // Calculate totals
             const proformasTotal = proformas.reduce((sum, doc) => sum + (doc.total || 0), 0);
@@ -128,8 +135,14 @@ const Dashboard = ({ navigateTo }) => {
                        doc.cancelled !== true;
             });
 
-            const allProformas = allActiveDocs.filter(d => d.type === 'proforma' && !d.convertedTo);
-            const allInvoices = allActiveDocs.filter(d => d.type === 'invoice');
+            const allProformas = allActiveDocs.filter(d => {
+                const type = (d.type || '').toLowerCase();
+                return (type === 'proforma' || type === 'proformas') && !d.convertedTo;
+            });
+            const allInvoices = allActiveDocs.filter(d => {
+                const type = (d.type || '').toLowerCase();
+                return type === 'invoice' || type === 'invoices';
+            });
 
             // Calculate total paid for each invoice using payments
             const allInvoicesWithPayments = allInvoices.map(inv => {

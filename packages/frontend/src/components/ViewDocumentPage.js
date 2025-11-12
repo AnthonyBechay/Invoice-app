@@ -28,6 +28,14 @@ const ViewDocumentPage = ({ documentToView, navigateTo, previousPage }) => {
             try {
                 const settings = await settingsAPI.get();
                 setUserSettings(settings);
+                
+                // Preload logo if available
+                if (settings?.logo) {
+                    const img = new Image();
+                    img.src = settings.logo;
+                    img.onload = () => setLogoLoaded(true);
+                    img.onerror = () => setLogoLoaded(true);
+                }
             } catch (error) {
                 console.error("Error fetching user settings:", error);
             }
@@ -356,13 +364,25 @@ const ViewDocumentPage = ({ documentToView, navigateTo, previousPage }) => {
     };
 
     // Use user settings if available, otherwise fall back to config defaults
+    const [logoLoaded, setLogoLoaded] = useState(false);
     const companyInfo = {
         name: userSettings?.companyName || COMPANY_INFO.name,
         address: userSettings?.companyAddress || COMPANY_INFO.address,
         phone: userSettings?.companyPhone || COMPANY_INFO.phone,
         vatNumber: userSettings?.companyVatNumber || COMPANY_INFO.vatNumber,
         logo: userSettings?.logo ? (
-            <img src={userSettings.logo} alt="Company Logo" className="h-12 w-auto" />
+            <div className="h-12 flex items-center">
+                {!logoLoaded && COMPANY_INFO.logo && (
+                    <div className="h-12 w-auto">{COMPANY_INFO.logo}</div>
+                )}
+                <img 
+                    src={userSettings.logo} 
+                    alt="Company Logo" 
+                    className={`h-12 w-auto ${logoLoaded ? 'block' : 'hidden'}`}
+                    onLoad={() => setLogoLoaded(true)}
+                    onError={() => setLogoLoaded(true)}
+                />
+            </div>
         ) : COMPANY_INFO.logo
     };
 

@@ -74,6 +74,25 @@ const PaymentsPage = () => {
         fetchData();
     }, []);
 
+    // Refresh data when page becomes visible (handles case when payments added from other pages)
+    useEffect(() => {
+        let refreshTimeout;
+        const handleVisibilityChange = () => {
+            if (!document.hidden) {
+                // Debounce refresh to avoid too many calls
+                clearTimeout(refreshTimeout);
+                refreshTimeout = setTimeout(() => {
+                    fetchData();
+                }, 500);
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            clearTimeout(refreshTimeout);
+        };
+    }, []);
+
     const fetchData = async () => {
         try {
             setLoading(true);
@@ -259,8 +278,8 @@ const PaymentsPage = () => {
 
         // Sort by date (newest first)
         filtered.sort((a, b) => {
-            const dateA = new Date(a.paymentDate);
-            const dateB = new Date(b.paymentDate);
+            const dateA = a.paymentDate ? new Date(a.paymentDate) : new Date(0);
+            const dateB = b.paymentDate ? new Date(b.paymentDate) : new Date(0);
             return dateB - dateA;
         });
 
@@ -460,74 +479,139 @@ const PaymentsPage = () => {
     const handleGenerateReceiptPDF = async () => {
         if (!selectedPaymentForView || !receiptPrintRef.current) return;
 
-        const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-        const isStandalone = window.navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+        try {
+            setIsGeneratingReceiptPDF(true);
+            const filename = `Payment-Receipt-${selectedPaymentForView.id.substring(0, 8)}.pdf`;
+            const element = receiptPrintRef.current;
+            const a4WidthPx = 794;
 
-        if (isIOS && isStandalone && navigator.share) {
-            try {
-                setIsGeneratingReceiptPDF(true);
-                const filename = `Payment-Receipt-${selectedPaymentForView.id.substring(0, 8)}.pdf`;
-                const element = receiptPrintRef.current;
-                const a4WidthPx = 794;
+            // Store original styles
+            const originalWidth = element.style.width;
+            const originalMaxWidth = element.style.maxWidth;
+            const originalMargin = element.style.margin;
+            const originalPadding = element.style.padding;
 
-                element.style.width = a4WidthPx + 'px';
-                element.style.maxWidth = a4WidthPx + 'px';
-                element.style.margin = '0';
-                element.style.padding = '32px';
-                element.offsetHeight;
+            // Set fixed A4 width for consistent capture
+            element.style.width = a4WidthPx + 'px';
+            element.style.maxWidth = a4WidthPx + 'px';
+            element.style.margin = '0 auto';
+            element.style.padding = '32px';
+            
+            // Force layout recalculation
+            element.offsetHeight;
 
-                await new Promise(resolve => setTimeout(resolve, 300));
-
-                const canvas = await html2canvas(element, {
-                    scale: 2,
-                    useCORS: true,
-                    logging: false,
-                    backgroundColor: '#ffffff',
-                    allowTaint: true,
-                    imageTimeout: 15000
+            // Wait for logo image to load if present
+            const logoImg = element.querySelector('img');
+            if (logoImg && logoImg.src) {
+                await new Promise((resolve, reject) => {
+                    if (logoImg.complete && logoImg.naturalHeight !== 0) {
+                        resolve();
+                    } else {
+                        logoImg.onload = resolve;
+                        logoImg.onerror = resolve; // Continue even if logo fails
+                        setTimeout(resolve, 1000); // Timeout after 1s
+                    }
                 });
+            }
 
-                const imgData = canvas.toDataURL('image/png', 1.0);
-                const pdf = new jsPDF({
-                    orientation: 'portrait',
-                    unit: 'mm',
-                    format: 'a4'
-                });
+            // Wait for layout to update
+            await new Promise(resolve => setTimeout(resolve, 500));
 
-                const a4Width = 210;
-                const pixelsPerMm = canvas.width / a4Width;
-                const imgHeightMm = canvas.height / pixelsPerMm;
-                pdf.addImage(imgData, 'PNG', 0, 0, a4Width, Math.min(imgHeightMm, 297), undefined, 'FAST');
+            const canvas = await html2canvas(element, {
+                scale: 2,
+                useCORS: true,
+                logging: false,
+                backgroundColor: '#ffffff',
+                allowTaint: false,
+                imageTimeout: 20000,
+                onclone: (clonedDoc) => {
+                    // Ensure logo loads in cloned document
+                    const clonedElement = clonedDoc.querySelector('.print-area');
+                    if (clonedElement) {
+                        clonedElement.style.width = a4WidthPx + 'px';
+                        clonedElement.style.maxWidth = a4WidthPx + 'px';
+                        clonedElement.style.margin = '0 auto';
+                        clonedElement.style.padding = '32px';
+                        
+                        const clonedLogo = clonedElement.querySelector('img');
+                        if (clonedLogo && clonedLogo.src) {
+                            clonedLogo.style.display = 'block';
+                        }
+                    }
+                }
+            });
 
-                const pdfBlob = pdf.output('blob');
-                const file = new File([pdfBlob], filename, { type: 'application/pdf' });
+            // Restore original styles
+            element.style.width = originalWidth;
+            element.style.maxWidth = originalMaxWidth;
+            element.style.margin = originalMargin;
+            element.style.padding = originalPadding;
 
-                if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            const imgData = canvas.toDataURL('image/png', 1.0);
+            const pdf = new jsPDF({
+                orientation: 'portrait',
+                unit: 'mm',
+                format: 'a4'
+            });
+
+            const a4Width = 210;
+            const a4Height = 297;
+            const pixelsPerMm = canvas.width / a4Width;
+            const imgHeightMm = canvas.height / pixelsPerMm;
+
+            // Only add one page - fit content to single page
+            if (imgHeightMm <= a4Height) {
+                pdf.addImage(imgData, 'PNG', 0, 0, a4Width, imgHeightMm, undefined, 'FAST');
+            } else {
+                // If content is taller than one page, scale it down to fit
+                const scale = a4Height / imgHeightMm;
+                pdf.addImage(imgData, 'PNG', 0, 0, a4Width, a4Height, undefined, 'FAST');
+            }
+
+            const pdfBlob = pdf.output('blob');
+            const file = new File([pdfBlob], filename, { type: 'application/pdf' });
+
+            const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+            const isStandalone = window.navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+
+            if (isIOS && isStandalone && navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+                try {
                     await navigator.share({
                         title: `Payment Receipt`,
                         text: `Payment Receipt for ${getClientName(selectedPaymentForView)}`,
                         files: [file]
                     });
-                } else {
-                    const url = URL.createObjectURL(pdfBlob);
-                    const link = document.createElement('a');
-                    link.href = url;
-                    link.download = filename;
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    URL.revokeObjectURL(url);
+                } catch (shareError) {
+                    if (shareError.name !== 'AbortError') {
+                        // Fallback to download
+                        const url = URL.createObjectURL(pdfBlob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = filename;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        URL.revokeObjectURL(url);
+                    }
                 }
-            } catch (error) {
-                if (error.name !== 'AbortError') {
-                    console.error('PDF generation error:', error);
-                    alert('Failed to generate PDF. Please try again.');
-                }
-            } finally {
-                setIsGeneratingReceiptPDF(false);
+            } else {
+                // Download PDF
+                const url = URL.createObjectURL(pdfBlob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
             }
-        } else {
-            window.print();
+        } catch (error) {
+            if (error.name !== 'AbortError') {
+                console.error('PDF generation error:', error);
+                alert('Failed to generate PDF. Please try again.');
+            }
+        } finally {
+            setIsGeneratingReceiptPDF(false);
         }
     };
 
@@ -973,7 +1057,7 @@ const PaymentsPage = () => {
                                         }}
                                     >
                                         <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                            {new Date(payment.paymentDate).toLocaleDateString()}
+                                            {payment.paymentDate ? new Date(payment.paymentDate).toLocaleDateString() : 'N/A'}
                                         </td>
                                         <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                             {clientName}
@@ -1285,9 +1369,25 @@ const PaymentsPage = () => {
                         </div>
 
                         <div className="p-6 overflow-y-auto flex-1">
-                            <div ref={receiptPrintRef} className="print-area bg-white p-6 rounded-lg">
+                            <div ref={receiptPrintRef} className="print-area bg-white p-6 rounded-lg" style={{ maxWidth: '794px', margin: '0 auto' }}>
                                 {/* Company Info */}
                                 <div className="text-center mb-6 border-b pb-4">
+                                    {userSettings?.logo && (
+                                        <div className="mb-4 flex justify-center">
+                                            <img 
+                                                src={userSettings.logo} 
+                                                alt="Company Logo" 
+                                                className="h-16 w-auto max-w-xs"
+                                                onLoad={(e) => {
+                                                    // Ensure logo is loaded before PDF generation
+                                                    e.target.style.display = 'block';
+                                                }}
+                                                onError={(e) => {
+                                                    e.target.style.display = 'none';
+                                                }}
+                                            />
+                                        </div>
+                                    )}
                                     <h1 className="text-2xl font-bold text-gray-800">{userSettings?.companyName || 'Company Name'}</h1>
                                     {userSettings?.companyAddress && (
                                         <p className="text-gray-600 text-sm mt-1">{userSettings.companyAddress}</p>

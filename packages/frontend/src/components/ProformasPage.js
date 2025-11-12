@@ -30,8 +30,13 @@ const ProformasPage = ({ navigateTo }) => {
         setLoading(true);
 
         try {
-            // Fetch all proformas (both active and deleted)
-            const allProformas = await documentsAPI.getAll('proforma');
+            // Fetch all proformas (both active and deleted) with timeout handling
+            const fetchPromise = documentsAPI.getAll('proforma');
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Request timeout')), 10000)
+            );
+            
+            const allProformas = await Promise.race([fetchPromise, timeoutPromise]);
             console.log("ProformasPage: Received", allProformas.length, "documents");
 
             const activeDocs = [];
