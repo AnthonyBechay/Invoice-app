@@ -25,7 +25,9 @@ const SuppliersManagement = () => {
     const fetchSuppliers = async () => {
         try {
             setLoading(true);
-            const data = await suppliersAPI.getAll();
+            const response = await suppliersAPI.getAll();
+            // Handle paginated response format
+            const data = response.data || response;
             setSuppliers(data);
         } catch (error) {
             console.error('Error fetching suppliers:', error);

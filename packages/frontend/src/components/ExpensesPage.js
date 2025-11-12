@@ -52,7 +52,9 @@ const ExpensesPage = () => {
     const fetchExpenses = async () => {
         try {
             setLoading(true);
-            const expensesData = await expensesAPI.getAll();
+            const response = await expensesAPI.getAll();
+            // Handle paginated response format
+            const expensesData = response.data || response;
 
             // Convert date strings to Date objects
             expensesData.forEach(expense => {

@@ -23,7 +23,9 @@ const ClientsPage = () => {
     const fetchClients = async () => {
         try {
             setLoading(true);
-            const data = await clientsAPI.getAll(debouncedSearchTerm);
+            const response = await clientsAPI.getAll(debouncedSearchTerm);
+            // Handle paginated response format
+            const data = response.data || response;
             setClients(data);
         } catch (err) {
             console.error('Error fetching clients:', err);

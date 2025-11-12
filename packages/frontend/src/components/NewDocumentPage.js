@@ -29,10 +29,13 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
 
     const fetchInitialData = useCallback(async () => {
         try {
-            const [clientsData, stockData] = await Promise.all([
+            const [clientsResponse, stockResponse] = await Promise.all([
                 clientsAPI.getAll(),
                 stockAPI.getAll()
             ]);
+            // Handle paginated response format
+            const clientsData = clientsResponse.data || clientsResponse;
+            const stockData = stockResponse.data || stockResponse;
             setClients(clientsData);
             setStockItems(stockData);
         } catch (error) {

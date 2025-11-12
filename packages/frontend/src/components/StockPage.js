@@ -52,7 +52,9 @@ const StockPage = () => {
 
     const fetchSuppliers = async () => {
         try {
-            const data = await suppliersAPI.getAll();
+            const response = await suppliersAPI.getAll();
+            // Handle paginated response format
+            const data = response.data || response;
             setSuppliers(data);
         } catch (err) {
             console.error('Error fetching suppliers:', err);
@@ -62,7 +64,9 @@ const StockPage = () => {
     const fetchItems = async () => {
         try {
             setLoading(true);
-            const data = await stockAPI.getAll(debouncedSearchTerm);
+            const response = await stockAPI.getAll(debouncedSearchTerm);
+            // Handle paginated response format
+            const data = response.data || response;
             setItems(data);
         } catch (err) {
             console.error('Error fetching stock items:', err);

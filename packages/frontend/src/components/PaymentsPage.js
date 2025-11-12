@@ -97,11 +97,16 @@ const PaymentsPage = () => {
     const fetchData = async () => {
         try {
             setLoading(true);
-            const [paymentsData, clientsData, documentsData] = await Promise.all([
+            const [paymentsResponse, clientsResponse, documentsResponse] = await Promise.all([
                 paymentsAPI.getAll(),
                 clientsAPI.getAll(),
                 documentsAPI.getAll('invoice') // Only fetch invoices
             ]);
+
+            // Handle paginated response format
+            const paymentsData = paymentsResponse.data || paymentsResponse;
+            const clientsData = clientsResponse.data || clientsResponse;
+            const documentsData = documentsResponse.data || documentsResponse;
 
             setPayments(paymentsData);
             setClients(clientsData);

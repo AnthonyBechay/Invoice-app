@@ -91,10 +91,14 @@ const Dashboard = ({ navigateTo }) => {
     const fetchData = async () => {
         try {
             setLoading(true);
-            const [allDocuments, allPayments] = await Promise.all([
+            const [documentsResponse, paymentsResponse] = await Promise.all([
                 documentsAPI.getAll(),
                 paymentsAPI.getAll()
             ]);
+
+            // Handle paginated response format
+            const allDocuments = documentsResponse.data || documentsResponse;
+            const allPayments = paymentsResponse.data || paymentsResponse;
 
             // Filter by date range and exclude cancelled/deleted documents for stats
             const docs = allDocuments.filter(doc => {

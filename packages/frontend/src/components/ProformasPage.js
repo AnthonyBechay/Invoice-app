@@ -194,7 +194,9 @@ const ProformasPage = ({ navigateTo }) => {
                     let clients = [];
                     try {
                         const { clientsAPI } = await import('../services/api');
-                        clients = await clientsAPI.getAll();
+                        const response = await clientsAPI.getAll();
+                        // Handle paginated response format
+                        clients = response.data || response;
                     } catch (e) {
                         console.warn('Could not fetch clients, will match by name only');
                     }
@@ -202,7 +204,9 @@ const ProformasPage = ({ navigateTo }) => {
                     let stockItems = [];
                     try {
                         const { stockAPI } = await import('../services/api');
-                        stockItems = await stockAPI.getAll();
+                        const response = await stockAPI.getAll();
+                        // Handle paginated response format
+                        stockItems = response.data || response;
                     } catch (e) {
                         console.warn('Could not fetch stock items');
                     }

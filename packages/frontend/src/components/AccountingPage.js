@@ -74,10 +74,14 @@ const AccountingPage = () => {
     const fetchData = async () => {
         try {
             setLoading(true);
-            const [allDocuments, allPayments] = await Promise.all([
+            const [documentsResponse, paymentsResponse] = await Promise.all([
                 documentsAPI.getAll(),
                 paymentsAPI.getAll()
             ]);
+
+            // Handle paginated response format
+            const allDocuments = documentsResponse.data || documentsResponse;
+            const allPayments = paymentsResponse.data || paymentsResponse;
 
             const dateRange = getDateRange();
 
