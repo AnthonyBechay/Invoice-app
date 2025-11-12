@@ -413,9 +413,10 @@ const InvoicesPage = ({ navigateTo }) => {
             const dateStr = dateObj.toLocaleDateString();
             const paymentStatus = getPaymentStatus(doc);
 
+            const clientName = doc.client?.name || doc.clientName || '';
             return (
                 doc.documentNumber.toLowerCase().includes(search) ||
-                doc.client.name.toLowerCase().includes(search) ||
+                clientName.toLowerCase().includes(search) ||
                 dateStr.includes(search) ||
                 doc.total.toString().includes(search) ||
                 paymentStatus.label.toLowerCase().includes(search) ||
@@ -679,12 +680,33 @@ const InvoicesPage = ({ navigateTo }) => {
                                 let clientId = null;
                                 
                                 if (clientName && clients.length > 0) {
-                                    const existingClient = clients.find(c => 
-                                        c.name && c.name.trim().toLowerCase() === clientName.toLowerCase()
+                                    // Normalize client name for matching (trim, lowercase, remove extra spaces)
+                                    const normalizeClientName = (name) => {
+                                        return (name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+                                    };
+                                    
+                                    const clientNameNormalized = normalizeClientName(clientName);
+                                    
+                                    // Try exact match first
+                                    let existingClient = clients.find(c => 
+                                        c.name && normalizeClientName(c.name) === clientNameNormalized
                                     );
                                     
-                                    if (existingClient) {
+                                    // If no exact match, try partial match (contains)
+                                    if (!existingClient) {
+                                        existingClient = clients.find(c => 
+                                            c.name && (
+                                                normalizeClientName(c.name).includes(clientNameNormalized) ||
+                                                clientNameNormalized.includes(normalizeClientName(c.name))
+                                            )
+                                        );
+                                    }
+                                    
+                                    if (existingClient && existingClient.id) {
                                         clientId = existingClient.id;
+                                        console.log(`Matched client: "${clientName}" -> "${existingClient.name}" (ID: ${existingClient.id})`);
+                                    } else {
+                                        console.warn(`Could not match client: "${clientName}"`);
                                     }
                                     // Don't create clients - they should already be imported
                                 }
@@ -1004,7 +1026,7 @@ const InvoicesPage = ({ navigateTo }) => {
                                     return (
                                         <tr key={doc.id} className="border-b border-gray-200 hover:bg-gray-100">
                                             <td className="py-3 px-6 text-left font-medium">{doc.documentNumber}</td>
-                                            <td className="py-3 px-6 text-left">{doc.client.name}</td>
+                                            <td className="py-3 px-6 text-left">{doc.client?.name || doc.clientName || 'N/A'}</td>
                                             <td className="py-3 px-6 text-center">{(doc.date instanceof Date ? doc.date : new Date(doc.date)).toLocaleDateString()}</td>
                                             <td className="py-3 px-6 text-right font-semibold">${doc.total.toFixed(2)}</td>
                                             <td className="py-3 px-6 text-right font-semibold">${(doc.totalPaid || 0).toFixed(2)}</td>
@@ -1183,7 +1205,7 @@ const InvoicesPage = ({ navigateTo }) => {
                                         {cancelledInvoices.map(doc => (
                                             <tr key={doc.id} className="border-b border-gray-200 hover:bg-gray-100">
                                                 <td className="py-3 px-6 text-left">{doc.documentNumber}</td>
-                                                <td className="py-3 px-6 text-left">{doc.client.name}</td>
+                                                <td className="py-3 px-6 text-left">{doc.client?.name || doc.clientName || 'N/A'}</td>
                                                 <td className="py-3 px-6 text-center">{(doc.date instanceof Date ? doc.date : new Date(doc.date)).toLocaleDateString()}</td>
                                                 <td className="py-3 px-6 text-center">
                                                     {doc.updatedAt ? (doc.updatedAt instanceof Date ? doc.updatedAt : new Date(doc.updatedAt)).toLocaleDateString() : (doc.createdAt ? (doc.createdAt instanceof Date ? doc.createdAt : new Date(doc.createdAt)).toLocaleDateString() : 'Unknown')}
@@ -1235,7 +1257,7 @@ const InvoicesPage = ({ navigateTo }) => {
                                 <div>
                                     <h2 className="text-2xl font-bold">Add Payment</h2>
                                     <p className="text-green-100 text-sm mt-1">
-                                        Invoice #{selectedInvoice.invoiceNumber} - {selectedInvoice.client.name}
+                                        Invoice #{selectedInvoice.invoiceNumber} - {selectedInvoice.client?.name || selectedInvoice.clientName || 'N/A'}
                                     </p>
                                 </div>
                                 <button

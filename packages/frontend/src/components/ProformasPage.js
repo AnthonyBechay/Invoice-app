@@ -388,12 +388,33 @@ const ProformasPage = ({ navigateTo }) => {
                                 let clientId = null;
                                 
                                 if (clientName && clients.length > 0) {
-                                    const existingClient = clients.find(c => 
-                                        c.name && c.name.trim().toLowerCase() === clientName.toLowerCase()
+                                    // Normalize client name for matching (trim, lowercase, remove extra spaces)
+                                    const normalizeClientName = (name) => {
+                                        return (name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+                                    };
+                                    
+                                    const clientNameNormalized = normalizeClientName(clientName);
+                                    
+                                    // Try exact match first
+                                    let existingClient = clients.find(c => 
+                                        c.name && normalizeClientName(c.name) === clientNameNormalized
                                     );
                                     
-                                    if (existingClient) {
+                                    // If no exact match, try partial match (contains)
+                                    if (!existingClient) {
+                                        existingClient = clients.find(c => 
+                                            c.name && (
+                                                normalizeClientName(c.name).includes(clientNameNormalized) ||
+                                                clientNameNormalized.includes(normalizeClientName(c.name))
+                                            )
+                                        );
+                                    }
+                                    
+                                    if (existingClient && existingClient.id) {
                                         clientId = existingClient.id;
+                                        console.log(`Matched client: "${clientName}" -> "${existingClient.name}" (ID: ${existingClient.id})`);
+                                    } else {
+                                        console.warn(`Could not match client: "${clientName}"`);
                                     }
                                     // Don't create clients - they should already be imported
                                 }
@@ -726,9 +747,10 @@ const ProformasPage = ({ navigateTo }) => {
 
     const filteredHistoryInvoices = historyInvoices.filter(invoice => {
         const filter = historyFilter.toLowerCase();
+        const clientName = invoice.client?.name || invoice.clientName || '';
         return (
             invoice.documentNumber.toLowerCase().includes(filter) ||
-            invoice.client.name.toLowerCase().includes(filter)
+            clientName.toLowerCase().includes(filter)
         );
     });
 
@@ -737,9 +759,10 @@ const ProformasPage = ({ navigateTo }) => {
         return proformas.filter(doc => {
             const search = debouncedSearchQuery.toLowerCase();
             const dateStr = new Date(doc.date).toLocaleDateString();
+            const clientName = doc.client?.name || doc.clientName || '';
             return (
                 doc.documentNumber.toLowerCase().includes(search) ||
-                doc.client.name.toLowerCase().includes(search) ||
+                clientName.toLowerCase().includes(search) ||
                 dateStr.includes(search) ||
                 doc.total.toString().includes(search)
             );
@@ -881,7 +904,7 @@ const ProformasPage = ({ navigateTo }) => {
                                 return (
                                     <tr key={doc.id} className="border-b border-gray-200 hover:bg-gray-100">
                                         <td className="py-3 px-6 text-left">{doc.documentNumber}</td>
-                                        <td className="py-3 px-6 text-left">{doc.client.name}</td>
+                                        <td className="py-3 px-6 text-left">{doc.client?.name || doc.clientName || 'N/A'}</td>
                                         <td className="py-3 px-6 text-center">{new Date(doc.date).toLocaleDateString()}</td>
                                         <td className="py-3 px-6 text-right font-semibold">${doc.total.toFixed(2)}</td>
                                         <td className="py-3 px-6 text-center">
@@ -1087,7 +1110,7 @@ const ProformasPage = ({ navigateTo }) => {
                                     {filteredHistoryInvoices.map(doc => (
                                         <tr key={doc.id} className="border-b border-gray-200 hover:bg-gray-100">
                                             <td className="py-3 px-6 text-left">{doc.documentNumber}</td>
-                                            <td className="py-3 px-6 text-left">{doc.client.name}</td>
+                                            <td className="py-3 px-6 text-left">{doc.client?.name || doc.clientName || 'N/A'}</td>
                                             <td className="py-3 px-6 text-center">{new Date(doc.date).toLocaleDateString()}</td>
                                             <td className="py-3 px-6 text-right font-semibold">${doc.total.toFixed(2)}</td>
                                             <td className="py-3 px-6 text-center">
