@@ -1,11 +1,7 @@
 import express from 'express';
 import { prisma } from '../config/database.js';
-import { clearCacheOnMutation } from '../middleware/cache.js';
 
 const router = express.Router();
-
-// Clear cache on document mutations
-router.use(clearCacheOnMutation('documents'));
 
 /**
  * Get all documents (proformas and invoices) for a user
@@ -48,10 +44,7 @@ router.get('/', async (req, res, next) => {
     const limit = limitParam ? Math.min(100, Math.max(1, parseInt(limitParam))) : 50; // Default 50, max 100
     const skip = (page - 1) * limit;
 
-    // Get total count for pagination metadata
-    const total = await prisma.document.count({ where });
-
-    // Build include object conditionally
+    // Build include object conditionally - only include what's needed
     const include = {
       client: {
         select: {
@@ -77,13 +70,29 @@ router.get('/', async (req, res, next) => {
       };
     }
 
-    const documents = await prisma.document.findMany({
-      where,
-      take: limit,
-      skip,
-      orderBy: { createdAt: 'desc' },
-      include
-    });
+    // Run queries in parallel for better performance
+    // Exclude CONVERTED documents from count to optimize (they're filtered out on frontend anyway)
+    const countWhere = {
+      ...where,
+      NOT: {
+        OR: [
+          { status: 'CONVERTED' },
+          { convertedTo: { not: null } }
+        ]
+      }
+    };
+
+    // Run both queries in parallel for better performance
+    const [documents, total] = await Promise.all([
+      prisma.document.findMany({
+        where,
+        take: limit,
+        skip,
+        orderBy: { createdAt: 'desc' },
+        include
+      }),
+      prisma.document.count({ where: countWhere })
+    ]);
 
     // Return paginated response
     res.json({
