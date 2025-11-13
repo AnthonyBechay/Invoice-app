@@ -70,39 +70,28 @@ router.get('/', async (req, res, next) => {
       };
     }
 
-    // Run queries in parallel for better performance
-    // Exclude CONVERTED documents from count to optimize (they're filtered out on frontend anyway)
-    const countWhere = {
-      ...where,
-      NOT: {
-        OR: [
-          { status: 'CONVERTED' },
-          { convertedTo: { not: null } }
-        ]
-      }
-    };
+    // Fetch limit+1 to check if there are more results (faster than count)
+    const documents = await prisma.document.findMany({
+      where,
+      take: limit + 1, // Fetch one extra to check if there are more
+      skip,
+      orderBy: { createdAt: 'desc' },
+      include
+    });
 
-    // Run both queries in parallel for better performance
-    const [documents, total] = await Promise.all([
-      prisma.document.findMany({
-        where,
-        take: limit,
-        skip,
-        orderBy: { createdAt: 'desc' },
-        include
-      }),
-      prisma.document.count({ where: countWhere })
-    ]);
+    // Check if there are more documents
+    const hasMore = documents.length > limit;
+    const actualDocuments = hasMore ? documents.slice(0, limit) : documents;
 
-    // Return paginated response
+    // Return paginated response without total count (much faster)
     res.json({
-      data: documents,
+      data: actualDocuments,
       pagination: {
         page,
         limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-        hasMore: page * limit < total
+        total: null, // Not calculated for performance
+        totalPages: null, // Not calculated for performance
+        hasMore
       }
     });
   } catch (error) {

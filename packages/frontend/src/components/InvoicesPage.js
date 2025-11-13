@@ -54,15 +54,22 @@ const InvoicesPage = ({ navigateTo }) => {
         fetchData();
     }, []);
 
+    // Refetch when search query changes
+    useEffect(() => {
+        if (debouncedSearchQuery !== undefined) {
+            fetchData();
+        }
+    }, [debouncedSearchQuery]);
+
     const fetchData = async () => {
         try {
             console.log("InvoicesPage: Fetching invoices and payments");
             setLoading(true);
 
-            // Fetch invoices and payments in parallel
+            // Fetch invoices and payments in parallel with pagination
             const [invoicesResponse, paymentsResponse] = await Promise.all([
-                documentsAPI.getAll('invoice'),
-                paymentsAPI.getAll()
+                documentsAPI.getAll('invoice', null, 50, 1, debouncedSearchQuery || ''),
+                paymentsAPI.getAll(null, 100, 1, '') // Fetch first 100 payments for calculations
             ]);
 
             // Handle paginated response format

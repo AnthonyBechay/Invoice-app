@@ -41,12 +41,10 @@ router.get('/', async (req, res, next) => {
     const limit = limitParam ? Math.min(100, Math.max(1, parseInt(limitParam))) : 50; // Default 50, max 100
     const skip = (page - 1) * limit;
 
-    // Get total count for pagination metadata
-    const total = await prisma.stock.count({ where });
-
+    // Fetch limit+1 to check if there are more results (faster than count)
     const items = await prisma.stock.findMany({
       where,
-      take: limit,
+      take: limit + 1,
       skip,
       orderBy: { createdAt: 'desc' },
       include: {
@@ -61,15 +59,19 @@ router.get('/', async (req, res, next) => {
       }
     });
 
-    // Return paginated response
+    // Check if there are more items
+    const hasMore = items.length > limit;
+    const actualItems = hasMore ? items.slice(0, limit) : items;
+
+    // Return paginated response without total count (much faster)
     res.json({
-      data: items,
+      data: actualItems,
       pagination: {
         page,
         limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-        hasMore: page * limit < total
+        total: null,
+        totalPages: null,
+        hasMore
       }
     });
   } catch (error) {

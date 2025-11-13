@@ -35,7 +35,7 @@ const ProformasPage = ({ navigateTo }) => {
             
             // Handle both old format (array) and new format (object with data property)
             const allProformas = response.data || response;
-            const paginationInfo = response.pagination || { page, limit: 50, total: allProformas.length, totalPages: 1, hasMore: false };
+            const paginationInfo = response.pagination || { page, limit: 50, total: null, totalPages: null, hasMore: allProformas.length > 0 };
             
             console.log("ProformasPage: Received", allProformas.length, "documents, pagination:", paginationInfo);
 
@@ -438,12 +438,19 @@ const ProformasPage = ({ navigateTo }) => {
                                     Loading...
                                 </>
                             ) : (
-                                `Load More Proformas (${pagination.total - displayedProformas.length} remaining)`
+                                `Load More Proformas`
                             )}
                         </button>
-                        <p className="text-sm text-gray-500 mt-2">
-                            Showing {displayedProformas.length} of {pagination.total} proformas
-                        </p>
+                        {pagination.total !== null && (
+                            <p className="text-sm text-gray-500 mt-2">
+                                Showing {displayedProformas.length} of {pagination.total} proformas
+                            </p>
+                        )}
+                        {pagination.total === null && (
+                            <p className="text-sm text-gray-500 mt-2">
+                                Showing {displayedProformas.length} proformas
+                            </p>
+                        )}
                     </div>
                 )}
             </div>

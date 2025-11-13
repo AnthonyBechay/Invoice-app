@@ -92,8 +92,8 @@ const Dashboard = ({ navigateTo }) => {
         try {
             setLoading(true);
             const [documentsResponse, paymentsResponse] = await Promise.all([
-                documentsAPI.getAll(),
-                paymentsAPI.getAll()
+                documentsAPI.getAll(null, null, 500, 1, ''), // Fetch first 500 documents for stats
+                paymentsAPI.getAll(null, 500, 1, '') // Fetch first 500 payments for stats
             ]);
 
             // Handle paginated response format

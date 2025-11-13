@@ -66,25 +66,27 @@ router.get('/', async (req, res, next) => {
     const limit = limitParam ? Math.min(100, Math.max(1, parseInt(limitParam))) : 50; // Default 50, max 100
     const skip = (page - 1) * limit;
 
-    // Get total count for pagination metadata
-    const total = await prisma.client.count({ where });
-
+    // Fetch limit+1 to check if there are more results (faster than count)
     const clients = await prisma.client.findMany({
       where,
-      take: limit,
+      take: limit + 1,
       skip,
       orderBy: { createdAt: 'desc' }
     });
 
-    // Return paginated response
+    // Check if there are more clients
+    const hasMore = clients.length > limit;
+    const actualClients = hasMore ? clients.slice(0, limit) : clients;
+
+    // Return paginated response without total count (much faster)
     res.json({
-      data: clients,
+      data: actualClients,
       pagination: {
         page,
         limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-        hasMore: page * limit < total
+        total: null,
+        totalPages: null,
+        hasMore
       }
     });
   } catch (error) {

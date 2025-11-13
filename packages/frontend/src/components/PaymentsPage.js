@@ -98,9 +98,9 @@ const PaymentsPage = () => {
         try {
             setLoading(true);
             const [paymentsResponse, clientsResponse, documentsResponse] = await Promise.all([
-                paymentsAPI.getAll(),
-                clientsAPI.getAll(),
-                documentsAPI.getAll('invoice') // Only fetch invoices
+                paymentsAPI.getAll(null, 100, 1, ''), // Fetch first 100 payments
+                clientsAPI.getAll('', 100, 1), // Fetch first 100 clients
+                documentsAPI.getAll('invoice', null, 100, 1, '') // Fetch first 100 invoices
             ]);
 
             // Handle paginated response format
