@@ -9,11 +9,49 @@ const ViewDocumentPage = ({ documentToView, navigateTo, previousPage }) => {
     const [userSettings, setUserSettings] = useState(null);
     const [isConverting, setIsConverting] = useState(false);
     const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+    const [fullDocument, setFullDocument] = useState(null);
+    const [isLoadingDocument, setIsLoadingDocument] = useState(false);
+
+    // Fetch full document with items if not already present
+    useEffect(() => {
+        const fetchFullDocument = async () => {
+            if (!documentToView) return;
+            
+            // Check if items are already included (even if empty array, that's valid)
+            if (documentToView.items !== undefined && documentToView.items !== null && Array.isArray(documentToView.items)) {
+                // Items are present (even if empty), use the document as-is
+                setFullDocument(documentToView);
+                return;
+            }
+
+            // Items are missing, fetch the full document
+            if (documentToView.id) {
+                setIsLoadingDocument(true);
+                try {
+                    console.log("ViewDocumentPage: Fetching full document with items for ID:", documentToView.id);
+                    const fullDoc = await documentsAPI.getById(documentToView.id);
+                    console.log("ViewDocumentPage: Received full document with items:", fullDoc.items?.length || 0, "items");
+                    setFullDocument(fullDoc);
+                } catch (error) {
+                    console.error("Error fetching full document:", error);
+                    // Fallback to the document we have
+                    setFullDocument(documentToView);
+                } finally {
+                    setIsLoadingDocument(false);
+                }
+            } else {
+                // No ID, use what we have
+                setFullDocument(documentToView);
+            }
+        };
+
+        fetchFullDocument();
+    }, [documentToView]);
 
     useEffect(() => {
-        if (documentToView) {
+        if (fullDocument) {
             const originalTitle = document.title;
-            const { type, documentNumber, clientName } = documentToView;
+            const { type, documentNumber, clientName } = fullDocument;
             document.title = `${type}-${documentNumber}-${clientName}`;
 
             // Cleanup function to reset title
@@ -21,7 +59,7 @@ const ViewDocumentPage = ({ documentToView, navigateTo, previousPage }) => {
                 document.title = originalTitle;
             };
         }
-    }, [documentToView]);
+    }, [fullDocument]);
 
     useEffect(() => {
         const fetchUserSettings = async () => {
@@ -325,7 +363,7 @@ const ViewDocumentPage = ({ documentToView, navigateTo, previousPage }) => {
     };
 
     const handleConvertToInvoice = async () => {
-        if (documentToView.type !== 'proforma') return;
+        if (!fullDocument || fullDocument.type !== 'proforma') return;
 
         // Prevent double click
         if (isConverting) {
@@ -336,7 +374,7 @@ const ViewDocumentPage = ({ documentToView, navigateTo, previousPage }) => {
         setIsConverting(true);
 
         try {
-            await documentsAPI.convertToInvoice(documentToView.id);
+            await documentsAPI.convertToInvoice(fullDocument.id);
             // Navigate to invoices page
             navigateTo('invoices');
         } catch (error) {
@@ -350,17 +388,33 @@ const ViewDocumentPage = ({ documentToView, navigateTo, previousPage }) => {
         return <p>No document selected.</p>;
     }
 
-    const { type, documentNumber, clientName, date, items, laborPrice, mandays, notes, vatApplied, subtotal, taxAmount, vatAmount, total } = documentToView;
+    if (isLoadingDocument) {
+        return (
+            <div className="flex justify-center items-center h-screen">
+                <div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-blue-500"></div>
+            </div>
+        );
+    }
+
+    if (!fullDocument) {
+        return <p>Loading document...</p>;
+    }
+
+    const { type, documentNumber, clientName, date, items, laborPrice, mandays, notes, vatApplied, subtotal, taxAmount, vatAmount, total } = fullDocument;
     // Use taxAmount (new field) or fall back to vatAmount (old field) for backward compatibility
     const displayVatAmount = taxAmount || vatAmount || 0;
 
+    // Debug logging
+    console.log("ViewDocumentPage: Rendering document with items:", items?.length || 0, "items");
+    console.log("ViewDocumentPage: Items data:", items);
+
     // Parse client data - handle both old format (client object) and new format (clientName, etc.)
     const clientInfo = {
-        name: clientName || documentToView.client?.name || 'Unknown Client',
-        address: documentToView.clientAddress || documentToView.client?.address || '',
-        location: documentToView.clientLocation || documentToView.client?.location || '',
-        phone: documentToView.clientPhone || documentToView.client?.phone || documentToView.client?.phoneNumber || '',
-        vatNumber: documentToView.clientVatNumber || documentToView.client?.vatNumber || ''
+        name: clientName || fullDocument.client?.name || 'Unknown Client',
+        address: fullDocument.clientAddress || fullDocument.client?.address || '',
+        location: fullDocument.clientLocation || fullDocument.client?.location || '',
+        phone: fullDocument.clientPhone || fullDocument.client?.phone || fullDocument.client?.phoneNumber || '',
+        vatNumber: fullDocument.clientVatNumber || fullDocument.client?.vatNumber || ''
     };
 
     // Use user settings if available, otherwise fall back to config defaults
@@ -419,7 +473,7 @@ const ViewDocumentPage = ({ documentToView, navigateTo, previousPage }) => {
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
                     <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">View Document</h1>
                     <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-                        {type === 'proforma' && !documentToView.convertedTo && (
+                        {type === 'proforma' && !fullDocument.convertedTo && (
                             <button
                                 onClick={handleConvertToInvoice}
                                 disabled={isConverting}
@@ -445,7 +499,7 @@ const ViewDocumentPage = ({ documentToView, navigateTo, previousPage }) => {
                                 Print / Save PDF
                             </button>
                         )}
-                        <button onClick={() => navigateTo(previousPage || (documentToView.type === 'invoice' ? 'invoices' : 'proformas'))} className="flex-1 sm:flex-none bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-3 sm:px-4 rounded-lg transition-colors duration-200 text-sm sm:text-base">
+                        <button onClick={() => navigateTo(previousPage || (fullDocument.type === 'invoice' ? 'invoices' : 'proformas'))} className="flex-1 sm:flex-none bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-3 sm:px-4 rounded-lg transition-colors duration-200 text-sm sm:text-base">
                             Back
                         </button>
                     </div>
