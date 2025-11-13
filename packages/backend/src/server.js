@@ -37,6 +37,8 @@ app.use(helmet({
 const allowedOrigins = [
   'http://localhost:3000',
   'https://invoice-app-xi-neon.vercel.app',
+  'https://wealthlogs.com',
+  'https://www.wealthlogs.com',
   process.env.FRONTEND_URL
 ].filter(Boolean);
 

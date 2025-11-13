@@ -11,6 +11,7 @@ const ViewDocumentPage = ({ documentToView, navigateTo, previousPage }) => {
     const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
     const [fullDocument, setFullDocument] = useState(null);
     const [isLoadingDocument, setIsLoadingDocument] = useState(false);
+    const [logoLoaded, setLogoLoaded] = useState(false);
 
     // Fetch full document with items if not already present
     useEffect(() => {
@@ -418,7 +419,6 @@ const ViewDocumentPage = ({ documentToView, navigateTo, previousPage }) => {
     };
 
     // Use user settings if available, otherwise fall back to config defaults
-    const [logoLoaded, setLogoLoaded] = useState(false);
     const companyInfo = {
         name: userSettings?.companyName || COMPANY_INFO.name,
         address: userSettings?.companyAddress || COMPANY_INFO.address,
