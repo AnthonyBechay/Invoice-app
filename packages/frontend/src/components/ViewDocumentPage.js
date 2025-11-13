@@ -506,11 +506,11 @@ const ViewDocumentPage = ({ documentToView, navigateTo, previousPage }) => {
                             </tr>
                         </thead>
                         <tbody>
-                            {items && items.map((item, index) => (
+                            {items && Array.isArray(items) && items.length > 0 && items.map((item, index) => (
                                 <tr key={index} className="border-b">
                                     <td className="py-1 px-2 text-xs">{item.stock?.partNumber || ''}</td>
                                     <td className="py-1 px-2 text-xs">
-                                        <div className="font-medium">{item.name}</div>
+                                        <div className="font-medium">{item.name || ''}</div>
                                         <div className="text-gray-600">{item.description || ''}</div>
                                     </td>
                                     <td className="py-1 px-2 text-center text-xs">{item.quantity || 0}</td>
@@ -518,6 +518,11 @@ const ViewDocumentPage = ({ documentToView, navigateTo, previousPage }) => {
                                     <td className="py-1 px-2 text-right font-medium text-xs">${((item.quantity || 0) * (item.unitPrice || 0)).toFixed(2)}</td>
                                 </tr>
                             ))}
+                            {(!items || !Array.isArray(items) || items.length === 0) && laborPrice === 0 && (!mandays || (mandays.days === 0 && mandays.people === 0)) && (
+                                <tr>
+                                    <td colSpan="5" className="py-4 px-2 text-center text-gray-500 text-xs">No items</td>
+                                </tr>
+                            )}
                             {laborPrice > 0 && (
                                 <tr className="border-b">
                                     <td className="py-1 px-2 font-semibold text-xs">SERVICE-01</td>

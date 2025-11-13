@@ -44,57 +44,84 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
     }, []);
 
     useEffect(() => {
-        fetchInitialData();
+        const loadData = async () => {
+            await fetchInitialData();
+            
+            if (documentToEdit) {
+                setMode('edit');
+                setPageTitle(`Edit ${documentToEdit.type === 'proforma' ? 'Proforma' : 'Invoice'}`);
+                setDocType(documentToEdit.type);
+                setSelectedClient(documentToEdit.clientId);
+                setClientSearch(documentToEdit.clientName || documentToEdit.client?.name || '');
 
-        if (documentToEdit) {
-            setMode('edit');
-            setPageTitle(`Edit ${documentToEdit.type === 'proforma' ? 'Proforma' : 'Invoice'}`);
-            setDocType(documentToEdit.type);
-            setSelectedClient(documentToEdit.clientId);
-            setClientSearch(documentToEdit.clientName);
+                // Map items properly for editing - ensure all fields are present and stockId is set
+                // Wait for stockItems to be loaded before mapping
+                const mappedItems = (documentToEdit.items || []).map(item => {
+                    // Find the stock item if stockId exists
+                    let stockItem = null;
+                    if (item.stockId && stockItems.length > 0) {
+                        stockItem = stockItems.find(s => s.id === item.stockId);
+                    }
+                    
+                    return {
+                        id: item.stockId || item.id || item.itemId || null, // Use stockId for matching
+                        stockId: item.stockId || null,
+                        itemId: item.stockId || item.id || item.itemId || null,
+                        name: item.name || '',
+                        description: item.description || '',
+                        quantity: item.quantity || 0,
+                        unitPrice: item.unitPrice || 0,
+                        buyingPrice: item.buyingPrice || item.stock?.buyingPrice || stockItem?.buyingPrice || 0,
+                        sellingPrice: item.unitPrice || stockItem?.sellingPrice || 0,
+                        unit: item.unit || stockItem?.unit || '',
+                        // Preserve stock data if available
+                        ...(item.stock && {
+                            partNumber: item.stock.partNumber,
+                            sku: item.stock.sku,
+                            brand: item.stock.brand,
+                            model: item.stock.model,
+                            specifications: item.stock.specifications
+                        }),
+                        // Also include stock data from stockItems if found
+                        ...(stockItem && {
+                            partNumber: stockItem.partNumber,
+                            sku: stockItem.sku,
+                            brand: stockItem.brand,
+                            model: stockItem.model,
+                            specifications: stockItem.specifications
+                        })
+                    };
+                });
+                setLineItems(mappedItems);
 
-            // Map items properly for editing - ensure all fields are present
-            const mappedItems = (documentToEdit.items || []).map(item => ({
-                ...item,
-                quantity: item.quantity || 0,
-                unitPrice: item.unitPrice || 0,
-                buyingPrice: item.buyingPrice || item.stock?.buyingPrice || 0,
-                // Preserve stock data if available
-                ...(item.stock && {
-                    partNumber: item.stock.partNumber,
-                    sku: item.stock.sku,
-                    brand: item.stock.brand,
-                    model: item.stock.model,
-                    specifications: item.stock.specifications
-                })
-            }));
-            setLineItems(mappedItems);
-
-            setLaborPrice(documentToEdit.laborPrice || 0);
-            setNotes(documentToEdit.notes || '');
-            setVatApplied(documentToEdit.vatApplied || false);
-            setDocumentNumber(documentToEdit.documentNumber);
-            if (documentToEdit.date) {
-                const existingDate = new Date(documentToEdit.date);
-                setDocumentDate(existingDate.toISOString().split('T')[0]);
+                setLaborPrice(documentToEdit.laborPrice || 0);
+                setNotes(documentToEdit.notes || '');
+                setVatApplied(documentToEdit.vatApplied || false);
+                setDocumentNumber(documentToEdit.documentNumber);
+                if (documentToEdit.date) {
+                    const existingDate = new Date(documentToEdit.date);
+                    setDocumentDate(existingDate.toISOString().split('T')[0]);
+                }
+                if (documentToEdit.mandays) {
+                    setMandays(documentToEdit.mandays);
+                    setShowMandays(true);
+                }
+                if (documentToEdit.realMandays) {
+                    setRealMandays(documentToEdit.realMandays);
+                    setShowRealMandays(true);
+                }
+            } else {
+                setMode('create');
+                setPageTitle('Create New Document');
+                setDocType('proforma');
+                documentsAPI.getNextNumber('proforma')
+                    .then(data => setDocumentNumber(data.documentNumber))
+                    .catch(err => console.error("Error getting document number:", err));
             }
-            if (documentToEdit.mandays) {
-                setMandays(documentToEdit.mandays);
-                setShowMandays(true);
-            }
-            if (documentToEdit.realMandays) {
-                setRealMandays(documentToEdit.realMandays);
-                setShowRealMandays(true);
-            }
-        } else {
-            setMode('create');
-            setPageTitle('Create New Document');
-            setDocType('proforma');
-            documentsAPI.getNextNumber('proforma')
-                .then(data => setDocumentNumber(data.documentNumber))
-                .catch(err => console.error("Error getting document number:", err));
-        }
-    }, [documentToEdit, fetchInitialData]);
+        };
+        
+        loadData();
+    }, [documentToEdit, fetchInitialData, stockItems]);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
