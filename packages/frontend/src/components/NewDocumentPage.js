@@ -48,15 +48,30 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
             await fetchInitialData();
             
             if (documentToEdit) {
+                // Fetch full document with items if not already present
+                let fullDocument = documentToEdit;
+                if (!documentToEdit.items || !Array.isArray(documentToEdit.items)) {
+                    if (documentToEdit.id) {
+                        console.log("NewDocumentPage: Fetching full document with items for editing, ID:", documentToEdit.id);
+                        try {
+                            fullDocument = await documentsAPI.getById(documentToEdit.id);
+                            console.log("NewDocumentPage: Received full document with items:", fullDocument.items?.length || 0, "items");
+                        } catch (error) {
+                            console.error("Error fetching full document for editing:", error);
+                            // Fallback to the document we have
+                        }
+                    }
+                }
+
                 setMode('edit');
-                setPageTitle(`Edit ${documentToEdit.type === 'proforma' ? 'Proforma' : 'Invoice'}`);
-                setDocType(documentToEdit.type);
-                setSelectedClient(documentToEdit.clientId);
-                setClientSearch(documentToEdit.clientName || documentToEdit.client?.name || '');
+                setPageTitle(`Edit ${fullDocument.type === 'proforma' ? 'Proforma' : 'Invoice'}`);
+                setDocType(fullDocument.type);
+                setSelectedClient(fullDocument.clientId);
+                setClientSearch(fullDocument.clientName || fullDocument.client?.name || '');
 
                 // Map items properly for editing - ensure all fields are present and stockId is set
                 // Wait for stockItems to be loaded before mapping
-                const mappedItems = (documentToEdit.items || []).map(item => {
+                const mappedItems = (fullDocument.items || []).map(item => {
                     // Find the stock item if stockId exists
                     let stockItem = null;
                     if (item.stockId && stockItems.length > 0) {
@@ -94,20 +109,20 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
                 });
                 setLineItems(mappedItems);
 
-                setLaborPrice(documentToEdit.laborPrice || 0);
-                setNotes(documentToEdit.notes || '');
-                setVatApplied(documentToEdit.vatApplied || false);
-                setDocumentNumber(documentToEdit.documentNumber);
-                if (documentToEdit.date) {
-                    const existingDate = new Date(documentToEdit.date);
+                setLaborPrice(fullDocument.laborPrice || 0);
+                setNotes(fullDocument.notes || '');
+                setVatApplied(fullDocument.vatApplied || false);
+                setDocumentNumber(fullDocument.documentNumber);
+                if (fullDocument.date) {
+                    const existingDate = new Date(fullDocument.date);
                     setDocumentDate(existingDate.toISOString().split('T')[0]);
                 }
-                if (documentToEdit.mandays) {
-                    setMandays(documentToEdit.mandays);
+                if (fullDocument.mandays) {
+                    setMandays(fullDocument.mandays);
                     setShowMandays(true);
                 }
-                if (documentToEdit.realMandays) {
-                    setRealMandays(documentToEdit.realMandays);
+                if (fullDocument.realMandays) {
+                    setRealMandays(fullDocument.realMandays);
                     setShowRealMandays(true);
                 }
             } else {
@@ -142,9 +157,11 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
         if (item) {
             setLineItems([...lineItems, {
                 ...item,
-                itemId: item.id,
+                id: item.id, // Stock item ID - used as stockId when saving
+                stockId: item.id, // Explicitly set stockId
+                itemId: item.id, // For backward compatibility
                 quantity: 1,
-                unitPrice: item.sellingPrice,
+                unitPrice: item.sellingPrice || 0,
                 unit: item.unit || ''  // Include unit from stock item
             }]);
             setItemSearch('');
@@ -202,9 +219,10 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
         const clientData = clients.find(c => c.id === selectedClient);
 
         // Clean items data - only send DocumentItem fields
+        // Ensure stockId is properly set (use stockId first, then id, then itemId)
         const cleanedItems = lineItems.map(item => ({
-            stockId: item.id || item.itemId || item.stockId || null,
-            name: item.name,
+            stockId: item.stockId || item.id || item.itemId || null,
+            name: item.name || '',
             description: item.description || '',
             quantity: parseFloat(item.quantity) || 0,
             unitPrice: parseFloat(item.unitPrice) || 0,
