@@ -248,6 +248,23 @@ const StockPage = () => {
         const file = e.target.files[0];
         if (!file) return;
 
+        // Helper function to parse price strings (handles $, commas, etc.)
+        const parsePrice = (value) => {
+            if (!value || value === '') return 0;
+            // Remove $ sign, commas, and whitespace, then parse
+            const cleaned = String(value).replace(/[$,\s]/g, '');
+            const parsed = parseFloat(cleaned);
+            return isNaN(parsed) ? 0 : parsed;
+        };
+
+        // Helper function to parse numeric values
+        const parseNumber = (value) => {
+            if (!value || value === '') return 0;
+            const cleaned = String(value).replace(/[,\s]/g, '');
+            const parsed = parseFloat(cleaned);
+            return isNaN(parsed) ? 0 : parsed;
+        };
+
         Papa.parse(file, {
             header: true,
             complete: async (results) => {
@@ -262,11 +279,11 @@ const StockPage = () => {
                             model: row['Model'] || '',
                             partNumber: row['Part Number'] || '',
                             sku: row['SKU'] || '',
-                            buyingPrice: parseFloat(row['Buying Price']) || 0,
-                            sellingPrice: parseFloat(row['Selling Price']) || 0,
+                            buyingPrice: parsePrice(row['Buying Price']),
+                            sellingPrice: parsePrice(row['Selling Price']),
                             unit: row['Unit'] || '',
-                            quantity: parseFloat(row['Quantity']) || 0,
-                            minQuantity: parseFloat(row['Min Quantity']) || 0,
+                            quantity: parseNumber(row['Quantity']),
+                            minQuantity: parseNumber(row['Min Quantity']),
                             specifications: row['Specifications'] || '',
                             voltage: row['Voltage'] || '',
                             power: row['Power'] || '',

@@ -453,6 +453,28 @@ export const adminAPI = {
       method: 'DELETE',
     });
   },
+
+  getUnusedStock: async () => {
+    return apiRequest('/admin/unused/stock');
+  },
+
+  getUnusedClients: async () => {
+    return apiRequest('/admin/unused/clients');
+  },
+
+  deleteUnusedStock: async (ids) => {
+    return apiRequest('/admin/unused/stock', {
+      method: 'DELETE',
+      body: JSON.stringify({ ids }),
+    });
+  },
+
+  deleteUnusedClients: async (ids) => {
+    return apiRequest('/admin/unused/clients', {
+      method: 'DELETE',
+      body: JSON.stringify({ ids }),
+    });
+  },
 };
 
 export default {

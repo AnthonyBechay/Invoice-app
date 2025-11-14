@@ -16,6 +16,12 @@ const AdminPage = () => {
     const [deletingUser, setDeletingUser] = useState(false);
     const [feedback, setFeedback] = useState({ type: '', message: '' });
     const [activeTab, setActiveTab] = useState('overview');
+    const [unusedStock, setUnusedStock] = useState([]);
+    const [unusedClients, setUnusedClients] = useState([]);
+    const [selectedStockIds, setSelectedStockIds] = useState(new Set());
+    const [selectedClientIds, setSelectedClientIds] = useState(new Set());
+    const [loadingUnused, setLoadingUnused] = useState(false);
+    const [deletingUnused, setDeletingUnused] = useState(false);
 
     // Check if user is admin
     const isAdmin = user?.email === 'anthonybechay1@gmail.com';
@@ -89,6 +95,119 @@ const AdminPage = () => {
             setFeedback({ type: 'error', message: error.message || 'Failed to delete user' });
         } finally {
             setDeletingUser(false);
+        }
+    };
+
+    const fetchUnusedData = async () => {
+        try {
+            setLoadingUnused(true);
+            const [stockData, clientsData] = await Promise.all([
+                adminAPI.getUnusedStock(),
+                adminAPI.getUnusedClients()
+            ]);
+            setUnusedStock(stockData);
+            setUnusedClients(clientsData);
+            setSelectedStockIds(new Set());
+            setSelectedClientIds(new Set());
+        } catch (error) {
+            console.error('Error fetching unused data:', error);
+            setFeedback({ type: 'error', message: 'Failed to load unused data' });
+        } finally {
+            setLoadingUnused(false);
+        }
+    };
+
+    const handleToggleStockSelection = (id) => {
+        setSelectedStockIds(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(id)) {
+                newSet.delete(id);
+            } else {
+                newSet.add(id);
+            }
+            return newSet;
+        });
+    };
+
+    const handleToggleClientSelection = (id) => {
+        setSelectedClientIds(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(id)) {
+                newSet.delete(id);
+            } else {
+                newSet.add(id);
+            }
+            return newSet;
+        });
+    };
+
+    const handleSelectAllStock = () => {
+        if (selectedStockIds.size === unusedStock.length) {
+            setSelectedStockIds(new Set());
+        } else {
+            setSelectedStockIds(new Set(unusedStock.map(item => item.id)));
+        }
+    };
+
+    const handleSelectAllClients = () => {
+        if (selectedClientIds.size === unusedClients.length) {
+            setSelectedClientIds(new Set());
+        } else {
+            setSelectedClientIds(new Set(unusedClients.map(client => client.id)));
+        }
+    };
+
+    const handleDeleteSelectedStock = async () => {
+        if (selectedStockIds.size === 0) {
+            setFeedback({ type: 'error', message: 'Please select at least one stock item to delete' });
+            return;
+        }
+
+        if (!window.confirm(`Are you sure you want to delete ${selectedStockIds.size} unused stock item(s)? This action cannot be undone.`)) {
+            return;
+        }
+
+        try {
+            setDeletingUnused(true);
+            setFeedback({ type: '', message: '' });
+            const result = await adminAPI.deleteUnusedStock(Array.from(selectedStockIds));
+            setFeedback({ 
+                type: 'success', 
+                message: result.message || `Successfully deleted ${result.deleted} stock item(s)` 
+            });
+            await fetchUnusedData();
+            setTimeout(() => setFeedback({ type: '', message: '' }), 5000);
+        } catch (error) {
+            setFeedback({ type: 'error', message: error.message || 'Failed to delete stock items' });
+        } finally {
+            setDeletingUnused(false);
+        }
+    };
+
+    const handleDeleteSelectedClients = async () => {
+        if (selectedClientIds.size === 0) {
+            setFeedback({ type: 'error', message: 'Please select at least one client to delete' });
+            return;
+        }
+
+        if (!window.confirm(`Are you sure you want to delete ${selectedClientIds.size} unused client(s)? This action cannot be undone.`)) {
+            return;
+        }
+
+        try {
+            setDeletingUnused(true);
+            setFeedback({ type: '', message: '' });
+            const result = await adminAPI.deleteUnusedClients(Array.from(selectedClientIds));
+            setFeedback({ 
+                type: 'success', 
+                message: result.message || `Successfully deleted ${result.deleted} client(s)` 
+            });
+            await fetchUnusedData();
+            setTimeout(() => setFeedback({ type: '', message: '' }), 5000);
+        } catch (error) {
+            setFeedback({ type: 'error', message: error.message || 'Failed to delete clients' });
+        } finally {
+            setDeletingUnused(false);
         }
     };
 
@@ -180,6 +299,19 @@ const AdminPage = () => {
                         }`}
                     >
                         User Management
+                    </button>
+                    <button
+                        onClick={() => {
+                            setActiveTab('cleanup');
+                            fetchUnusedData();
+                        }}
+                        className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                            activeTab === 'cleanup'
+                                ? 'border-indigo-500 text-indigo-600'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        }`}
+                    >
+                        Data Cleanup
                     </button>
                 </nav>
             </div>
@@ -482,6 +614,189 @@ const AdminPage = () => {
                             </button>
                         </div>
                     </div>
+                </div>
+            )}
+
+            {/* Data Cleanup Tab */}
+            {activeTab === 'cleanup' && (
+                <div>
+                    <div className="mb-6">
+                        <h2 className="text-2xl font-bold text-gray-800 mb-2">Data Cleanup</h2>
+                        <p className="text-gray-600 text-sm">
+                            Delete unused stock items and clients that are not referenced in any documents.
+                            <strong className="text-red-600"> This action cannot be undone.</strong>
+                        </p>
+                    </div>
+
+                    {loadingUnused ? (
+                        <div className="flex justify-center items-center h-64">
+                            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+                        </div>
+                    ) : (
+                        <div className="space-y-6">
+                            {/* Unused Stock Section */}
+                            <div className="bg-white rounded-lg shadow-md overflow-hidden">
+                                <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                                    <div>
+                                        <h3 className="text-xl font-bold text-gray-800">Unused Stock Items</h3>
+                                        <p className="text-sm text-gray-500 mt-1">
+                                            {unusedStock.length} item(s) not used in any documents
+                                        </p>
+                                    </div>
+                                    {unusedStock.length > 0 && (
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={handleSelectAllStock}
+                                                className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-sm"
+                                            >
+                                                {selectedStockIds.size === unusedStock.length ? 'Deselect All' : 'Select All'}
+                                            </button>
+                                            <button
+                                                onClick={handleDeleteSelectedStock}
+                                                disabled={selectedStockIds.size === 0 || deletingUnused}
+                                                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                                            >
+                                                {deletingUnused ? 'Deleting...' : `Delete Selected (${selectedStockIds.size})`}
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                                {unusedStock.length === 0 ? (
+                                    <div className="px-6 py-8 text-center text-gray-500">
+                                        No unused stock items found. All stock items are being used in documents.
+                                    </div>
+                                ) : (
+                                    <div className="overflow-x-auto">
+                                        <table className="min-w-full divide-y divide-gray-200">
+                                            <thead className="bg-gray-50">
+                                                <tr>
+                                                    <th className="px-6 py-3 text-left">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedStockIds.size === unusedStock.length && unusedStock.length > 0}
+                                                            onChange={handleSelectAllStock}
+                                                            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                                        />
+                                                    </th>
+                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
+                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Brand/Model</th>
+                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Part #</th>
+                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="bg-white divide-y divide-gray-200">
+                                                {unusedStock.map((item) => (
+                                                    <tr key={item.id} className="hover:bg-gray-50">
+                                                        <td className="px-6 py-4 whitespace-nowrap">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={selectedStockIds.has(item.id)}
+                                                                onChange={() => handleToggleStockSelection(item.id)}
+                                                                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                                            />
+                                                        </td>
+                                                        <td className="px-6 py-4 whitespace-nowrap">
+                                                            <div className="text-sm font-medium text-gray-900">{item.name}</div>
+                                                            {item.description && (
+                                                                <div className="text-xs text-gray-500">{item.description}</div>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.category || '-'}</td>
+                                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                            {item.brand || '-'} {item.model ? `/${item.model}` : ''}
+                                                        </td>
+                                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.partNumber || item.sku || '-'}</td>
+                                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.user?.email || '-'}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Unused Clients Section */}
+                            <div className="bg-white rounded-lg shadow-md overflow-hidden">
+                                <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                                    <div>
+                                        <h3 className="text-xl font-bold text-gray-800">Unused Clients</h3>
+                                        <p className="text-sm text-gray-500 mt-1">
+                                            {unusedClients.length} client(s) not used in any documents
+                                        </p>
+                                    </div>
+                                    {unusedClients.length > 0 && (
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={handleSelectAllClients}
+                                                className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-sm"
+                                            >
+                                                {selectedClientIds.size === unusedClients.length ? 'Deselect All' : 'Select All'}
+                                            </button>
+                                            <button
+                                                onClick={handleDeleteSelectedClients}
+                                                disabled={selectedClientIds.size === 0 || deletingUnused}
+                                                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                                            >
+                                                {deletingUnused ? 'Deleting...' : `Delete Selected (${selectedClientIds.size})`}
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                                {unusedClients.length === 0 ? (
+                                    <div className="px-6 py-8 text-center text-gray-500">
+                                        No unused clients found. All clients are being used in documents.
+                                    </div>
+                                ) : (
+                                    <div className="overflow-x-auto">
+                                        <table className="min-w-full divide-y divide-gray-200">
+                                            <thead className="bg-gray-50">
+                                                <tr>
+                                                    <th className="px-6 py-3 text-left">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedClientIds.size === unusedClients.length && unusedClients.length > 0}
+                                                            onChange={handleSelectAllClients}
+                                                            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                                        />
+                                                    </th>
+                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
+                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
+                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="bg-white divide-y divide-gray-200">
+                                                {unusedClients.map((client) => (
+                                                    <tr key={client.id} className="hover:bg-gray-50">
+                                                        <td className="px-6 py-4 whitespace-nowrap">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={selectedClientIds.has(client.id)}
+                                                                onChange={() => handleToggleClientSelection(client.id)}
+                                                                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                                            />
+                                                        </td>
+                                                        <td className="px-6 py-4 whitespace-nowrap">
+                                                            <div className="text-sm font-medium text-gray-900">{client.name}</div>
+                                                            {client.clientId && (
+                                                                <div className="text-xs text-gray-500">ID: {client.clientId}</div>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{client.email || '-'}</td>
+                                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{client.phone || '-'}</td>
+                                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{client.location || '-'}</td>
+                                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{client.user?.email || '-'}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
         </div>

@@ -300,5 +300,196 @@ router.get('/users/:id', async (req, res, next) => {
   }
 });
 
+/**
+ * Get unused stock items (not referenced in any document)
+ */
+router.get('/unused/stock', async (req, res, next) => {
+  try {
+    // Get all stock items
+    const allStock = await prisma.stock.findMany({
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        category: true,
+        brand: true,
+        model: true,
+        partNumber: true,
+        sku: true,
+        quantity: true,
+        buyingPrice: true,
+        sellingPrice: true,
+        userId: true,
+        user: {
+          select: {
+            email: true
+          }
+        },
+        createdAt: true
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    // Get all stock IDs that are referenced in documents
+    const usedStockIds = await prisma.documentItem.findMany({
+      where: {
+        stockId: { not: null }
+      },
+      select: {
+        stockId: true
+      },
+      distinct: ['stockId']
+    });
+
+    const usedIds = new Set(usedStockIds.map(item => item.stockId));
+
+    // Filter out used stock items
+    const unusedStock = allStock.filter(stock => !usedIds.has(stock.id));
+
+    res.json(unusedStock);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * Get unused clients (not referenced in any document)
+ */
+router.get('/unused/clients', async (req, res, next) => {
+  try {
+    // Get all clients
+    const allClients = await prisma.client.findMany({
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        location: true,
+        clientId: true,
+        userId: true,
+        user: {
+          select: {
+            email: true
+          }
+        },
+        createdAt: true
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    // Get all client IDs that are referenced in documents
+    const usedClientIds = await prisma.document.findMany({
+      where: {
+        clientId: { not: null }
+      },
+      select: {
+        clientId: true
+      },
+      distinct: ['clientId']
+    });
+
+    const usedIds = new Set(usedClientIds.map(doc => doc.clientId));
+
+    // Filter out used clients
+    const unusedClients = allClients.filter(client => !usedIds.has(client.id));
+
+    res.json(unusedClients);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * Delete unused stock items (bulk delete, no cascade)
+ */
+router.delete('/unused/stock', async (req, res, next) => {
+  try {
+    const { ids } = req.body;
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'Array of stock IDs is required' });
+    }
+
+    // Verify these are actually unused (safety check)
+    const usedStockIds = await prisma.documentItem.findMany({
+      where: {
+        stockId: { in: ids }
+      },
+      select: {
+        stockId: true
+      },
+      distinct: ['stockId']
+    });
+
+    const usedIds = new Set(usedStockIds.map(item => item.stockId));
+    const safeToDelete = ids.filter(id => !usedIds.has(id));
+
+    if (safeToDelete.length === 0) {
+      return res.status(400).json({ error: 'None of the selected items can be deleted (they are in use)' });
+    }
+
+    // Delete the unused stock items
+    const result = await prisma.stock.deleteMany({
+      where: {
+        id: { in: safeToDelete }
+      }
+    });
+
+    res.json({
+      message: `Successfully deleted ${result.count} unused stock item(s)`,
+      deleted: result.count,
+      skipped: ids.length - safeToDelete.length
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * Delete unused clients (bulk delete, no cascade)
+ */
+router.delete('/unused/clients', async (req, res, next) => {
+  try {
+    const { ids } = req.body;
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'Array of client IDs is required' });
+    }
+
+    // Verify these are actually unused (safety check)
+    const usedClientIds = await prisma.document.findMany({
+      where: {
+        clientId: { in: ids }
+      },
+      select: {
+        clientId: true
+      },
+      distinct: ['clientId']
+    });
+
+    const usedIds = new Set(usedClientIds.map(doc => doc.clientId));
+    const safeToDelete = ids.filter(id => !usedIds.has(id));
+
+    if (safeToDelete.length === 0) {
+      return res.status(400).json({ error: 'None of the selected clients can be deleted (they are in use)' });
+    }
+
+    // Delete the unused clients
+    const result = await prisma.client.deleteMany({
+      where: {
+        id: { in: safeToDelete }
+      }
+    });
+
+    res.json({
+      message: `Successfully deleted ${result.count} unused client(s)`,
+      deleted: result.count,
+      skipped: ids.length - safeToDelete.length
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export default router;
 
