@@ -63,15 +63,43 @@ const StockPage = () => {
 
     const [allItems, setAllItems] = useState([]);
 
+    // Helper function to fetch ALL items (handles pagination)
+    const fetchAllItems = async () => {
+        const allItemsList = [];
+        let page = 1;
+        let hasMore = true;
+        const limit = 100; // Max limit per page
+
+        while (hasMore) {
+            try {
+                const response = await stockAPI.getAll('', limit, page);
+                const data = response.data || response;
+                const pagination = response.pagination;
+                
+                if (Array.isArray(data)) {
+                    allItemsList.push(...data);
+                } else if (data) {
+                    allItemsList.push(data);
+                }
+
+                hasMore = pagination?.hasMore || false;
+                page++;
+            } catch (err) {
+                console.error('Error fetching items page:', page, err);
+                break;
+            }
+        }
+
+        return allItemsList;
+    };
+
     const fetchItems = async () => {
         try {
             setLoading(true);
             // Fetch all items without search filter for comprehensive client-side search
-            const response = await stockAPI.getAll('');
-            // Handle paginated response format
-            const data = response.data || response;
-            setAllItems(data);
-            setItems(data);
+            const allItemsList = await fetchAllItems();
+            setAllItems(allItemsList);
+            setItems(allItemsList);
         } catch (err) {
             console.error('Error fetching stock items:', err);
             setError('Failed to fetch stock items');
@@ -360,19 +388,21 @@ const StockPage = () => {
                     }
 
                     // Ensure we have all items loaded for duplicate detection
-                    // If allItems is empty, fetch all items first
-                    let existingItems = allItems.length > 0 ? allItems : items;
-                    
-                    // If we don't have all items, fetch them now
-                    if (allItems.length === 0) {
-                        try {
-                            const response = await stockAPI.getAll('');
-                            const data = response.data || response;
-                            existingItems = data;
-                            setAllItems(data); // Cache for future use
-                        } catch (err) {
-                            console.warn('Could not fetch all items for duplicate check, using current items:', err);
+                    // Always fetch all items to ensure we check against complete database
+                    let existingItems = [];
+                    try {
+                        console.log('Fetching all items for duplicate detection...');
+                        existingItems = await fetchAllItems();
+                        console.log(`Fetched ${existingItems.length} existing items for duplicate check`);
+                        // Update allItems cache
+                        if (existingItems.length > 0) {
+                            setAllItems(existingItems);
                         }
+                    } catch (err) {
+                        console.error('Error fetching all items for duplicate check:', err);
+                        // Fallback to cached items
+                        existingItems = allItems.length > 0 ? allItems : items;
+                        console.warn(`Using cached items (${existingItems.length} items) for duplicate check`);
                     }
                     const duplicateItems = [];
                     const uniqueItems = [];
