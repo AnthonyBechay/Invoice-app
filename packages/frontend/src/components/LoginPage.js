@@ -16,10 +16,22 @@ const LoginPage = ({ setPage }) => {
         try {
             const result = await login(email, password);
             if (!result.success) {
-                setError(result.error || 'Failed to log in. Please check your email and password.');
+                // Show specific error message, especially for rate limiting
+                const errorMsg = result.error || 'Failed to log in. Please check your email and password.';
+                setError(errorMsg);
+                
+                // If rate limited, suggest waiting
+                if (errorMsg.toLowerCase().includes('too many requests') || errorMsg.toLowerCase().includes('rate limit')) {
+                    setError('Too many login attempts. Please wait a moment and try again.');
+                }
             }
         } catch (err) {
-            setError('Failed to log in. Please check your email and password.');
+            const errorMsg = err.message || 'Failed to log in. Please check your email and password.';
+            if (errorMsg.toLowerCase().includes('too many requests') || errorMsg.toLowerCase().includes('rate limit')) {
+                setError('Too many login attempts. Please wait a moment and try again.');
+            } else {
+                setError('Failed to log in. Please check your email and password.');
+            }
             console.error("Login Error:", err);
         } finally {
             setLoading(false);

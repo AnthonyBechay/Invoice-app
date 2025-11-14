@@ -7,8 +7,13 @@ export const getToken = () => localStorage.getItem(TOKEN_KEY);
 export const setToken = (token) => localStorage.setItem(TOKEN_KEY, token);
 export const removeToken = () => localStorage.removeItem(TOKEN_KEY);
 
-// API request helper
-const apiRequest = async (endpoint, options = {}) => {
+// Retry helper with exponential backoff
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+const apiRequest = async (endpoint, options = {}, retryCount = 0) => {
+  const MAX_RETRIES = 3;
+  const INITIAL_RETRY_DELAY = 1000; // 1 second
+
   const token = getToken();
   const headers = {
     'Content-Type': 'application/json',
@@ -32,15 +37,83 @@ const apiRequest = async (endpoint, options = {}) => {
       return null;
     }
 
-    const data = await response.json();
+    // Handle 429 (Too Many Requests) with retry logic
+    if (response.status === 429) {
+      const retryAfter = response.headers.get('Retry-After');
+      const retryDelay = retryAfter 
+        ? parseInt(retryAfter) * 1000 
+        : INITIAL_RETRY_DELAY * Math.pow(2, retryCount);
+
+      if (retryCount < MAX_RETRIES) {
+        console.warn(`Rate limited (429). Retrying in ${retryDelay}ms... (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+        await sleep(retryDelay);
+        return apiRequest(endpoint, options, retryCount + 1);
+      } else {
+        // Max retries reached - read response body once
+        let errorMessage = 'Too many requests. Please wait a moment and try again.';
+        try {
+          const contentType = response.headers.get('content-type');
+          const text = await response.text();
+          if (contentType && contentType.includes('application/json')) {
+            const data = JSON.parse(text);
+            errorMessage = data.error || data.message || errorMessage;
+          } else if (text && text.trim()) {
+            errorMessage = text;
+          }
+        } catch (parseError) {
+          // If we can't parse the error, use default message
+          console.error('Error parsing 429 response:', parseError);
+        }
+        throw new Error(errorMessage);
+      }
+    }
+
+    // Read response body once
+    const contentType = response.headers.get('content-type');
+    let responseText;
+    let data;
+    
+    try {
+      responseText = await response.text();
+      
+      // Try to parse JSON, but handle non-JSON responses gracefully
+      if (contentType && contentType.includes('application/json')) {
+        data = responseText ? JSON.parse(responseText) : null;
+      } else {
+        // Non-JSON response
+        if (!response.ok) {
+          // For error responses, use the text as error message
+          throw new Error(responseText || `HTTP error! status: ${response.status}`);
+        }
+        // For successful non-JSON responses, return the text
+        return responseText;
+      }
+    } catch (parseError) {
+      // If JSON parsing fails and it's an error response, use text as error
+      if (!response.ok) {
+        throw new Error(responseText || `HTTP error! status: ${response.status}`);
+      }
+      throw parseError;
+    }
 
     if (!response.ok) {
-      throw new Error(data.error || `HTTP error! status: ${response.status}`);
+      const errorMessage = data?.error || data?.message || `HTTP error! status: ${response.status}`;
+      
+      // Handle 401 Unauthorized
+      if (response.status === 401) {
+        removeToken();
+        throw new Error('Unauthorized: No token provided');
+      }
+      
+      throw new Error(errorMessage);
     }
 
     return data;
   } catch (error) {
-    console.error('API request error:', error);
+    // Don't log retry attempts as errors
+    if (error.message && !error.message.includes('Too many requests')) {
+      console.error('API request error:', error);
+    }
     throw error;
   }
 };
