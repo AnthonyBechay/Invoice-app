@@ -359,16 +359,115 @@ const StockPage = () => {
                         return;
                     }
 
-                    // Check for duplicates - both against existing items and within the CSV itself
-                    const existingItems = allItems.length > 0 ? allItems : items;
+                    // Ensure we have all items loaded for duplicate detection
+                    // If allItems is empty, fetch all items first
+                    let existingItems = allItems.length > 0 ? allItems : items;
+                    
+                    // If we don't have all items, fetch them now
+                    if (allItems.length === 0) {
+                        try {
+                            const response = await stockAPI.getAll('');
+                            const data = response.data || response;
+                            existingItems = data;
+                            setAllItems(data); // Cache for future use
+                        } catch (err) {
+                            console.warn('Could not fetch all items for duplicate check, using current items:', err);
+                        }
+                    }
                     const duplicateItems = [];
                     const uniqueItems = [];
                     const seenInCSV = new Map(); // Track items we've seen in the CSV
 
-                    // Helper to normalize fields for comparison
-                    const normalizeField = (val) => String(val || '').trim().toLowerCase();
+                    // Helper to normalize fields for comparison - handles null, undefined, empty strings
+                    const normalizeField = (val) => {
+                        if (val === null || val === undefined || val === '') return '';
+                        return String(val).trim().toLowerCase().replace(/\s+/g, ' ');
+                    };
                     
-                    // Helper to create a comparison key for an item
+                    // Helper to normalize price for comparison
+                    const normalizePrice = (price) => {
+                        const num = parseFloat(price) || 0;
+                        return num.toFixed(2);
+                    };
+                    
+                    // Helper to check if two items are duplicates
+                    const areItemsDuplicate = (item1, item2) => {
+                        // Normalize all fields
+                        const fields1 = {
+                            name: normalizeField(item1.name),
+                            description: normalizeField(item1.description),
+                            category: normalizeField(item1.category),
+                            brand: normalizeField(item1.brand),
+                            model: normalizeField(item1.model),
+                            partNumber: normalizeField(item1.partNumber),
+                            sku: normalizeField(item1.sku),
+                            buyingPrice: normalizePrice(item1.buyingPrice),
+                            sellingPrice: normalizePrice(item1.sellingPrice),
+                            unit: normalizeField(item1.unit),
+                            specifications: normalizeField(item1.specifications),
+                            voltage: normalizeField(item1.voltage),
+                            power: normalizeField(item1.power),
+                            material: normalizeField(item1.material),
+                            size: normalizeField(item1.size),
+                            weight: normalizeField(item1.weight),
+                            color: normalizeField(item1.color),
+                            supplierName: normalizeField(item1.supplierName || item1.supplier?.name || item1.supplier || ''),
+                            supplierCode: normalizeField(item1.supplierCode),
+                            warranty: normalizeField(item1.warranty),
+                            notes: normalizeField(item1.notes)
+                        };
+                        
+                        const fields2 = {
+                            name: normalizeField(item2.name),
+                            description: normalizeField(item2.description),
+                            category: normalizeField(item2.category),
+                            brand: normalizeField(item2.brand),
+                            model: normalizeField(item2.model),
+                            partNumber: normalizeField(item2.partNumber),
+                            sku: normalizeField(item2.sku),
+                            buyingPrice: normalizePrice(item2.buyingPrice),
+                            sellingPrice: normalizePrice(item2.sellingPrice),
+                            unit: normalizeField(item2.unit),
+                            specifications: normalizeField(item2.specifications),
+                            voltage: normalizeField(item2.voltage),
+                            power: normalizeField(item2.power),
+                            material: normalizeField(item2.material),
+                            size: normalizeField(item2.size),
+                            weight: normalizeField(item2.weight),
+                            color: normalizeField(item2.color),
+                            supplierName: normalizeField(item2.supplierName || item2.supplier?.name || item2.supplier || ''),
+                            supplierCode: normalizeField(item2.supplierCode),
+                            warranty: normalizeField(item2.warranty),
+                            notes: normalizeField(item2.notes)
+                        };
+                        
+                        // Compare all fields
+                        return (
+                            fields1.name === fields2.name &&
+                            fields1.description === fields2.description &&
+                            fields1.category === fields2.category &&
+                            fields1.brand === fields2.brand &&
+                            fields1.model === fields2.model &&
+                            fields1.partNumber === fields2.partNumber &&
+                            fields1.sku === fields2.sku &&
+                            fields1.buyingPrice === fields2.buyingPrice &&
+                            fields1.sellingPrice === fields2.sellingPrice &&
+                            fields1.unit === fields2.unit &&
+                            fields1.specifications === fields2.specifications &&
+                            fields1.voltage === fields2.voltage &&
+                            fields1.power === fields2.power &&
+                            fields1.material === fields2.material &&
+                            fields1.size === fields2.size &&
+                            fields1.weight === fields2.weight &&
+                            fields1.color === fields2.color &&
+                            fields1.supplierName === fields2.supplierName &&
+                            fields1.supplierCode === fields2.supplierCode &&
+                            fields1.warranty === fields2.warranty &&
+                            fields1.notes === fields2.notes
+                        );
+                    };
+
+                    // Create a key for quick lookup (for CSV internal duplicates)
                     const getItemKey = (item) => {
                         return [
                             normalizeField(item.name),
@@ -378,8 +477,8 @@ const StockPage = () => {
                             normalizeField(item.model),
                             normalizeField(item.partNumber),
                             normalizeField(item.sku),
-                            (item.buyingPrice || 0).toFixed(2),
-                            (item.sellingPrice || 0).toFixed(2),
+                            normalizePrice(item.buyingPrice),
+                            normalizePrice(item.sellingPrice),
                             normalizeField(item.unit),
                             normalizeField(item.specifications),
                             normalizeField(item.voltage),
@@ -392,15 +491,15 @@ const StockPage = () => {
                             normalizeField(item.supplierCode),
                             normalizeField(item.warranty),
                             normalizeField(item.notes)
-                        ].join('|');
+                        ].join('|||'); // Use triple separator to avoid conflicts
                     };
 
                     for (let i = 0; i < validItems.length; i++) {
                         const newItem = validItems[i];
-                        const itemKey = getItemKey(newItem);
                         let isDuplicate = false;
 
                         // First check if this item is a duplicate within the CSV itself
+                        const itemKey = getItemKey(newItem);
                         if (seenInCSV.has(itemKey)) {
                             isDuplicate = true;
                             duplicateItems.push(newItem);
@@ -409,7 +508,7 @@ const StockPage = () => {
 
                         // Check against existing items in database
                         for (const existing of existingItems) {
-                            const existingKey = getItemKey({
+                            if (areItemsDuplicate(newItem, {
                                 name: existing.name,
                                 description: existing.description,
                                 category: existing.category,
@@ -431,9 +530,7 @@ const StockPage = () => {
                                 supplierCode: existing.supplierCode,
                                 warranty: existing.warranty,
                                 notes: existing.notes
-                            });
-
-                            if (itemKey === existingKey) {
+                            })) {
                                 isDuplicate = true;
                                 break;
                             }
@@ -447,9 +544,17 @@ const StockPage = () => {
                         }
                     }
 
+                    // Log for debugging
+                    console.log('Duplicate detection results:', {
+                        total: validItems.length,
+                        duplicates: duplicateItems.length,
+                        unique: uniqueItems.length,
+                        existingItemsCount: existingItems.length
+                    });
+
                     if (duplicateItems.length > 0) {
                         const proceed = window.confirm(
-                            `Found ${duplicateItems.length} duplicate item(s) that already exist in your stock.\n\n` +
+                            `Found ${duplicateItems.length} duplicate item(s) out of ${validItems.length} total.\n\n` +
                             `Duplicates will be skipped.\n\n` +
                             `Proceed with importing ${uniqueItems.length} unique item(s)?`
                         );
@@ -459,13 +564,13 @@ const StockPage = () => {
                     }
 
                     if (uniqueItems.length === 0) {
-                        alert('All items in the CSV file are duplicates. No new items to import.');
+                        alert(`All ${validItems.length} items in the CSV file are duplicates. No new items to import.`);
                         return;
                     }
 
                     await stockAPI.batchCreate(uniqueItems);
                     await fetchItems();
-                    const message = `Successfully imported ${uniqueItems.length} item(s)` + 
+                    const message = `Successfully imported ${uniqueItems.length} item(s) out of ${validItems.length} total` + 
                         (duplicateItems.length > 0 ? ` (${duplicateItems.length} duplicate(s) skipped)` : '');
                     alert(message);
                 } catch (err) {

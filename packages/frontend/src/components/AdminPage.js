@@ -637,8 +637,11 @@ const AdminPage = () => {
                                     value={selectedUserId}
                                     onChange={(e) => {
                                         setSelectedUserId(e.target.value);
-                                        setTimeout(() => fetchUnusedData(), 100);
+                                        // Clear selections when filter changes
+                                        setSelectedStockIds(new Set());
+                                        setSelectedClientIds(new Set());
                                     }}
+                                    onBlur={() => fetchUnusedData()}
                                     className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
                                 >
                                     <option value="">All Users</option>
@@ -648,6 +651,12 @@ const AdminPage = () => {
                                         </option>
                                     ))}
                                 </select>
+                                <button
+                                    onClick={fetchUnusedData}
+                                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm"
+                                >
+                                    Apply Filter
+                                </button>
                             </div>
                         </div>
                     </div>
