@@ -305,8 +305,11 @@ router.get('/users/:id', async (req, res, next) => {
  */
 router.get('/unused/stock', async (req, res, next) => {
   try {
+    const { userId } = req.query;
+    
     // Get all stock items
     const allStock = await prisma.stock.findMany({
+      where: userId ? { userId } : undefined,
       select: {
         id: true,
         name: true,
@@ -357,8 +360,11 @@ router.get('/unused/stock', async (req, res, next) => {
  */
 router.get('/unused/clients', async (req, res, next) => {
   try {
+    const { userId } = req.query;
+    
     // Get all clients
     const allClients = await prisma.client.findMany({
+      where: userId ? { userId } : undefined,
       select: {
         id: true,
         name: true,

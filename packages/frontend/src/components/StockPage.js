@@ -44,7 +44,7 @@ const StockPage = () => {
 
     useEffect(() => {
         fetchItems();
-    }, [debouncedSearchTerm]);
+    }, []); // Only fetch once on mount, search is handled client-side
 
     useEffect(() => {
         fetchSuppliers();
@@ -61,12 +61,16 @@ const StockPage = () => {
         }
     };
 
+    const [allItems, setAllItems] = useState([]);
+
     const fetchItems = async () => {
         try {
             setLoading(true);
-            const response = await stockAPI.getAll(debouncedSearchTerm);
+            // Fetch all items without search filter for comprehensive client-side search
+            const response = await stockAPI.getAll('');
             // Handle paginated response format
             const data = response.data || response;
+            setAllItems(data);
             setItems(data);
         } catch (err) {
             console.error('Error fetching stock items:', err);
@@ -75,6 +79,48 @@ const StockPage = () => {
             setLoading(false);
         }
     };
+
+    // Enhanced client-side search across all fields
+    useEffect(() => {
+        if (!debouncedSearchTerm) {
+            setItems(allItems);
+            return;
+        }
+
+        const search = debouncedSearchTerm.toLowerCase();
+        const filtered = allItems.filter(item => {
+            const searchableFields = [
+                item.name,
+                item.description,
+                item.category,
+                item.brand,
+                item.model,
+                item.partNumber,
+                item.sku,
+                item.specifications,
+                item.voltage,
+                item.power,
+                item.material,
+                item.size,
+                item.weight,
+                item.color,
+                item.supplier?.name || item.supplier || item.supplierName,
+                item.supplierCode,
+                item.warranty,
+                item.notes,
+                item.unit,
+                String(item.buyingPrice || ''),
+                String(item.sellingPrice || ''),
+                String(item.quantity || '')
+            ];
+
+            return searchableFields.some(field => 
+                field && String(field).toLowerCase().includes(search)
+            );
+        });
+
+        setItems(filtered);
+    }, [debouncedSearchTerm, allItems]);
 
     const handleInputChange = (e) => {
         const { name, value } = e.target;
@@ -313,46 +359,91 @@ const StockPage = () => {
                         return;
                     }
 
-                    // Check for duplicates against existing items
-                    const existingItems = items;
+                    // Check for duplicates - both against existing items and within the CSV itself
+                    const existingItems = allItems.length > 0 ? allItems : items;
                     const duplicateItems = [];
                     const uniqueItems = [];
+                    const seenInCSV = new Map(); // Track items we've seen in the CSV
 
-                    for (const newItem of validItems) {
-                        // Create a normalized comparison key
-                        const normalizeField = (val) => String(val || '').trim().toLowerCase();
-                        
-                        // Check if all fields match an existing item
-                        const isDuplicate = existingItems.some(existing => {
-                            return (
-                                normalizeField(existing.name) === normalizeField(newItem.name) &&
-                                normalizeField(existing.description) === normalizeField(newItem.description) &&
-                                normalizeField(existing.category) === normalizeField(newItem.category) &&
-                                normalizeField(existing.brand) === normalizeField(newItem.brand) &&
-                                normalizeField(existing.model) === normalizeField(newItem.model) &&
-                                normalizeField(existing.partNumber) === normalizeField(newItem.partNumber) &&
-                                normalizeField(existing.sku) === normalizeField(newItem.sku) &&
-                                Math.abs((existing.buyingPrice || 0) - (newItem.buyingPrice || 0)) < 0.01 &&
-                                Math.abs((existing.sellingPrice || 0) - (newItem.sellingPrice || 0)) < 0.01 &&
-                                normalizeField(existing.unit) === normalizeField(newItem.unit) &&
-                                normalizeField(existing.specifications) === normalizeField(newItem.specifications) &&
-                                normalizeField(existing.voltage) === normalizeField(newItem.voltage) &&
-                                normalizeField(existing.power) === normalizeField(newItem.power) &&
-                                normalizeField(existing.material) === normalizeField(newItem.material) &&
-                                normalizeField(existing.size) === normalizeField(newItem.size) &&
-                                normalizeField(existing.weight) === normalizeField(newItem.weight) &&
-                                normalizeField(existing.color) === normalizeField(newItem.color) &&
-                                normalizeField(existing.supplierName || existing.supplier?.name || '') === normalizeField(newItem.supplierName) &&
-                                normalizeField(existing.supplierCode) === normalizeField(newItem.supplierCode) &&
-                                normalizeField(existing.warranty) === normalizeField(newItem.warranty) &&
-                                normalizeField(existing.notes) === normalizeField(newItem.notes)
-                            );
-                        });
+                    // Helper to normalize fields for comparison
+                    const normalizeField = (val) => String(val || '').trim().toLowerCase();
+                    
+                    // Helper to create a comparison key for an item
+                    const getItemKey = (item) => {
+                        return [
+                            normalizeField(item.name),
+                            normalizeField(item.description),
+                            normalizeField(item.category),
+                            normalizeField(item.brand),
+                            normalizeField(item.model),
+                            normalizeField(item.partNumber),
+                            normalizeField(item.sku),
+                            (item.buyingPrice || 0).toFixed(2),
+                            (item.sellingPrice || 0).toFixed(2),
+                            normalizeField(item.unit),
+                            normalizeField(item.specifications),
+                            normalizeField(item.voltage),
+                            normalizeField(item.power),
+                            normalizeField(item.material),
+                            normalizeField(item.size),
+                            normalizeField(item.weight),
+                            normalizeField(item.color),
+                            normalizeField(item.supplierName),
+                            normalizeField(item.supplierCode),
+                            normalizeField(item.warranty),
+                            normalizeField(item.notes)
+                        ].join('|');
+                    };
+
+                    for (let i = 0; i < validItems.length; i++) {
+                        const newItem = validItems[i];
+                        const itemKey = getItemKey(newItem);
+                        let isDuplicate = false;
+
+                        // First check if this item is a duplicate within the CSV itself
+                        if (seenInCSV.has(itemKey)) {
+                            isDuplicate = true;
+                            duplicateItems.push(newItem);
+                            continue;
+                        }
+
+                        // Check against existing items in database
+                        for (const existing of existingItems) {
+                            const existingKey = getItemKey({
+                                name: existing.name,
+                                description: existing.description,
+                                category: existing.category,
+                                brand: existing.brand,
+                                model: existing.model,
+                                partNumber: existing.partNumber,
+                                sku: existing.sku,
+                                buyingPrice: existing.buyingPrice,
+                                sellingPrice: existing.sellingPrice,
+                                unit: existing.unit,
+                                specifications: existing.specifications,
+                                voltage: existing.voltage,
+                                power: existing.power,
+                                material: existing.material,
+                                size: existing.size,
+                                weight: existing.weight,
+                                color: existing.color,
+                                supplierName: existing.supplier?.name || existing.supplier || existing.supplierName || '',
+                                supplierCode: existing.supplierCode,
+                                warranty: existing.warranty,
+                                notes: existing.notes
+                            });
+
+                            if (itemKey === existingKey) {
+                                isDuplicate = true;
+                                break;
+                            }
+                        }
 
                         if (isDuplicate) {
                             duplicateItems.push(newItem);
                         } else {
                             uniqueItems.push(newItem);
+                            seenInCSV.set(itemKey, true); // Mark as seen
                         }
                     }
 

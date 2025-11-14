@@ -280,6 +280,8 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
 
     // Filter items based on search - comprehensive search across all fields
     const filteredItems = stockItems.filter(item => {
+        if (!itemSearch.trim()) return true;
+        
         const search = itemSearch.toLowerCase();
         // Helper to safely convert to string for search
         const safeToString = (value) => {
@@ -289,21 +291,35 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
             return String(value);
         };
         
-        return (
-            item.name?.toLowerCase().includes(search) ||
-            item.description?.toLowerCase().includes(search) ||
-            item.brand?.toLowerCase().includes(search) ||
-            item.model?.toLowerCase().includes(search) ||
-            item.category?.toLowerCase().includes(search) ||
-            item.partNumber?.toLowerCase().includes(search) ||
-            item.sku?.toLowerCase().includes(search) ||
-            item.specifications?.toLowerCase().includes(search) ||
-            item.voltage?.toLowerCase().includes(search) ||
-            item.power?.toLowerCase().includes(search) ||
-            item.material?.toLowerCase().includes(search) ||
-            safeToString(item.supplier).toLowerCase().includes(search) ||
-            item.sellingPrice?.toString().includes(search) ||
-            item.buyingPrice?.toString().includes(search)
+        // Create array of all searchable fields
+        const searchableFields = [
+            item.name,
+            item.description,
+            item.brand,
+            item.model,
+            item.category,
+            item.partNumber,
+            item.sku,
+            item.specifications,
+            item.voltage,
+            item.power,
+            item.material,
+            item.size,
+            item.weight,
+            item.color,
+            item.unit,
+            item.supplierCode,
+            item.warranty,
+            item.notes,
+            safeToString(item.supplier),
+            String(item.sellingPrice || ''),
+            String(item.buyingPrice || ''),
+            String(item.quantity || '')
+        ];
+        
+        // Check if search term appears in any field
+        return searchableFields.some(field => 
+            field && String(field).toLowerCase().includes(search)
         );
     });
 

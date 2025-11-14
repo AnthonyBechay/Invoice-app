@@ -22,6 +22,7 @@ const AdminPage = () => {
     const [selectedClientIds, setSelectedClientIds] = useState(new Set());
     const [loadingUnused, setLoadingUnused] = useState(false);
     const [deletingUnused, setDeletingUnused] = useState(false);
+    const [selectedUserId, setSelectedUserId] = useState('');
 
     // Check if user is admin
     const isAdmin = user?.email === 'anthonybechay1@gmail.com';
@@ -101,9 +102,10 @@ const AdminPage = () => {
     const fetchUnusedData = async () => {
         try {
             setLoadingUnused(true);
+            const params = selectedUserId ? { userId: selectedUserId } : {};
             const [stockData, clientsData] = await Promise.all([
-                adminAPI.getUnusedStock(),
-                adminAPI.getUnusedClients()
+                adminAPI.getUnusedStock(params),
+                adminAPI.getUnusedClients(params)
             ]);
             setUnusedStock(stockData);
             setUnusedClients(clientsData);
@@ -621,11 +623,33 @@ const AdminPage = () => {
             {activeTab === 'cleanup' && (
                 <div>
                     <div className="mb-6">
-                        <h2 className="text-2xl font-bold text-gray-800 mb-2">Data Cleanup</h2>
-                        <p className="text-gray-600 text-sm">
-                            Delete unused stock items and clients that are not referenced in any documents.
-                            <strong className="text-red-600"> This action cannot be undone.</strong>
-                        </p>
+                        <div className="flex justify-between items-center mb-2">
+                            <div>
+                                <h2 className="text-2xl font-bold text-gray-800 mb-2">Data Cleanup</h2>
+                                <p className="text-gray-600 text-sm">
+                                    Delete unused stock items and clients that are not referenced in any documents.
+                                    <strong className="text-red-600"> This action cannot be undone.</strong>
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <label className="text-sm font-medium text-gray-700">Filter by User:</label>
+                                <select
+                                    value={selectedUserId}
+                                    onChange={(e) => {
+                                        setSelectedUserId(e.target.value);
+                                        setTimeout(() => fetchUnusedData(), 100);
+                                    }}
+                                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                                >
+                                    <option value="">All Users</option>
+                                    {users.map(user => (
+                                        <option key={user.id} value={user.id}>
+                                            {user.email}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
                     </div>
 
                     {loadingUnused ? (

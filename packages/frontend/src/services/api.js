@@ -454,12 +454,14 @@ export const adminAPI = {
     });
   },
 
-  getUnusedStock: async () => {
-    return apiRequest('/admin/unused/stock');
+  getUnusedStock: async (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return apiRequest(`/admin/unused/stock${query ? `?${query}` : ''}`);
   },
 
-  getUnusedClients: async () => {
-    return apiRequest('/admin/unused/clients');
+  getUnusedClients: async (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return apiRequest(`/admin/unused/clients${query ? `?${query}` : ''}`);
   },
 
   deleteUnusedStock: async (ids) => {
