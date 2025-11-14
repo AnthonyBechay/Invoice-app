@@ -1,11 +1,7 @@
 import express from 'express';
 import { prisma } from '../config/database.js';
-import { clearCacheOnMutation } from '../middleware/cache.js';
 
 const router = express.Router();
-
-// Clear cache on payment mutations
-router.use(clearCacheOnMutation('payments'));
 
 /**
  * Get all payments for a user

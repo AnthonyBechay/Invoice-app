@@ -1,11 +1,7 @@
 import express from 'express';
 import { prisma } from '../config/database.js';
-import { clearCacheOnMutation } from '../middleware/cache.js';
 
 const router = express.Router();
-
-// Clear cache on client mutations
-router.use(clearCacheOnMutation('clients'));
 
 /**
  * Get next client ID

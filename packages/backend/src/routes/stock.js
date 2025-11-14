@@ -1,11 +1,7 @@
 import express from 'express';
 import { prisma } from '../config/database.js';
-import { clearCacheOnMutation } from '../middleware/cache.js';
 
 const router = express.Router();
-
-// Clear cache on stock mutations
-router.use(clearCacheOnMutation('stock'));
 
 /**
  * Get all stock items for a user

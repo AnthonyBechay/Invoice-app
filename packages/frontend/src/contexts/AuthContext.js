@@ -26,31 +26,10 @@ export const AuthProvider = ({ children }) => {
           setUser(response.user);
         } catch (err) {
           console.error('Failed to get current user:', err);
-
-          // Only logout on authentication errors (401/403), not network errors
-          // This prevents logging out users when backend is temporarily unavailable
+          // If authentication fails, clear token and logout
           if (err.message && (err.message.includes('401') || err.message.includes('Unauthorized') || err.message.includes('403'))) {
-            console.log('Authentication failed, logging out');
             authAPI.logout();
             setUser(null);
-          } else {
-            // Network error or server error - keep user logged in
-            // They can retry by navigating or refreshing
-            console.log('Network/server error, keeping user logged in with cached token');
-            // Try to decode the token to get basic user info
-            try {
-              const tokenParts = token.split('.');
-              if (tokenParts.length === 3) {
-                const payload = JSON.parse(atob(tokenParts[1]));
-                setUser({
-                  id: payload.userId,
-                  email: payload.email,
-                  _cachedFromToken: true
-                });
-              }
-            } catch (decodeErr) {
-              console.error('Failed to decode token:', decodeErr);
-            }
           }
         }
       }
