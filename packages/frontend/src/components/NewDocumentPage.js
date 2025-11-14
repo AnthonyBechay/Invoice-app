@@ -279,6 +279,7 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
     };
 
     // Filter items based on search - comprehensive search across all fields (case-insensitive)
+    // Based on Prisma Stock model schema - checking ALL fields explicitly
     const filteredItems = stockItems.filter(item => {
         if (!itemSearch || !itemSearch.trim()) return true;
         
@@ -291,7 +292,7 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
             // Handle null/undefined
             if (value == null || value === undefined) return '';
             
-            // Handle strings
+            // Handle strings - EXPLICITLY check for empty strings
             if (typeof value === 'string') {
                 // Trim and normalize whitespace (multiple spaces to single space)
                 const normalized = value.trim().replace(/\s+/g, ' ');
@@ -312,45 +313,47 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
             return str === '' ? '' : str.toLowerCase();
         };
         
-        // Get all searchable field values - check each one individually
-        const fieldsToCheck = [
-            item.name,
-            item.description,
-            item.brand,
-            item.model,
-            item.category,
-            item.partNumber,
-            item.sku,
-            item.specifications,
-            item.voltage,
-            item.power,
-            item.material,
-            item.size,
-            item.weight,
-            item.color,
-            item.unit,
-            item.supplierCode,
-            item.warranty,
-            item.notes,
-            item.supplier, // Could be object or string
-            item.sellingPrice,
-            item.buyingPrice,
-            item.quantity
-        ];
+        // Check ALL fields from Prisma Stock model schema explicitly
+        // Basic Info
+        if (normalizeForSearch(item.name).includes(search)) return true;
+        if (normalizeForSearch(item.description).includes(search)) return true; // EXPLICIT CHECK
+        if (normalizeForSearch(item.category).includes(search)) return true;
         
-        // Check if search term appears in any field (case-insensitive)
-        for (const fieldValue of fieldsToCheck) {
-            // Skip null/undefined
-            if (fieldValue == null || fieldValue === undefined) continue;
-            
-            // Normalize the value
-            const normalized = normalizeForSearch(fieldValue);
-            
-            // Check if normalized value contains the search term (must be non-empty)
-            if (normalized && normalized.length > 0 && normalized.includes(search)) {
-                return true;
-            }
+        // Product Details
+        if (normalizeForSearch(item.brand).includes(search)) return true; // EXPLICIT CHECK
+        if (normalizeForSearch(item.model).includes(search)) return true;
+        if (normalizeForSearch(item.partNumber).includes(search)) return true;
+        if (normalizeForSearch(item.sku).includes(search)) return true;
+        
+        // Technical Specifications
+        if (normalizeForSearch(item.specifications).includes(search)) return true;
+        if (normalizeForSearch(item.voltage).includes(search)) return true;
+        if (normalizeForSearch(item.power).includes(search)) return true;
+        if (normalizeForSearch(item.material).includes(search)) return true;
+        if (normalizeForSearch(item.size).includes(search)) return true;
+        if (normalizeForSearch(item.weight).includes(search)) return true;
+        if (normalizeForSearch(item.color).includes(search)) return true;
+        
+        // Inventory
+        if (normalizeForSearch(item.unit).includes(search)) return true;
+        if (normalizeForSearch(item.quantity).includes(search)) return true;
+        if (normalizeForSearch(item.minQuantity).includes(search)) return true;
+        
+        // Additional Info
+        if (normalizeForSearch(item.supplierName).includes(search)) return true;
+        if (normalizeForSearch(item.supplierCode).includes(search)) return true;
+        if (normalizeForSearch(item.warranty).includes(search)) return true;
+        if (normalizeForSearch(item.notes).includes(search)) return true;
+        
+        // Supplier relation (object with name property)
+        if (item.supplier) {
+            if (normalizeForSearch(item.supplier.name).includes(search)) return true;
+            if (normalizeForSearch(item.supplier.email).includes(search)) return true;
         }
+        
+        // Pricing (convert to string for search)
+        if (normalizeForSearch(item.buyingPrice).includes(search)) return true;
+        if (normalizeForSearch(item.sellingPrice).includes(search)) return true;
         
         return false;
     });
