@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { clientsAPI, stockAPI, documentsAPI } from '../services/api';
+import { useDebounce } from '../hooks/useDebounce';
 
 const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
     const [docType, setDocType] = useState('proforma');
@@ -13,6 +14,8 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
     const [selectedStockItem, setSelectedStockItem] = useState('');
     const [itemSearch, setItemSearch] = useState('');
     const [isItemDropdownVisible, setIsItemDropdownVisible] = useState(false);
+    const [isSearchingItems, setIsSearchingItems] = useState(false);
+    const debouncedItemSearch = useDebounce(itemSearch, 300);
     const [lineItems, setLineItems] = useState([]);
     const [laborPrice, setLaborPrice] = useState(0);
     const [mandays, setMandays] = useState({ days: 0, people: 0, costPerDay: 0 });
@@ -27,26 +30,17 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
     const [mode, setMode] = useState('create');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    // Fetch initial data only once on mount or when documentToEdit changes
+    // Fetch clients on mount
     useEffect(() => {
         let isMounted = true;
         
-        const loadData = async () => {
+        const loadClients = async () => {
             try {
-                // Fetch clients and stock in parallel
-                const [clientsResponse, stockResponse] = await Promise.all([
-                    clientsAPI.getAll(),
-                    stockAPI.getAll()
-                ]);
-                
-                // Handle paginated response format
+                const clientsResponse = await clientsAPI.getAll();
                 const clientsData = clientsResponse.data || clientsResponse;
-                const stockData = stockResponse.data || stockResponse;
                 
                 if (!isMounted) return;
-                
                 setClients(clientsData);
-                setStockItems(stockData);
                 
                 if (documentToEdit) {
                     // Fetch full document with items if not already present
@@ -72,13 +66,10 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
                     setSelectedClient(fullDocument.clientId);
                     setClientSearch(fullDocument.clientName || fullDocument.client?.name || '');
 
-                    // Map items properly for editing - use stockData directly from fetch
+                    // Map items properly for editing
                     const mappedItems = (fullDocument.items || []).map(item => {
-                        // Find the stock item if stockId exists - use stockData from fetch
-                        let stockItem = null;
-                        if (item.stockId && stockData.length > 0) {
-                            stockItem = stockData.find(s => s.id === item.stockId);
-                        }
+                        // Stock item data is already in item.stock if available
+                        const stockItem = item.stock;
                         
                         return {
                             id: item.stockId || item.id || item.itemId || null,
@@ -98,14 +89,6 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
                                 brand: item.stock.brand,
                                 model: item.stock.model,
                                 specifications: item.stock.specifications
-                            }),
-                            // Also include stock data from stockItems if found
-                            ...(stockItem && {
-                                partNumber: stockItem.partNumber,
-                                sku: stockItem.sku,
-                                brand: stockItem.brand,
-                                model: stockItem.model,
-                                specifications: stockItem.specifications
                             })
                         };
                     });
@@ -148,12 +131,82 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
             }
         };
         
-        loadData();
+        loadClients();
         
         return () => {
             isMounted = false;
         };
-    }, [documentToEdit]); // Only depend on documentToEdit, not stockItems or fetchInitialData
+    }, [documentToEdit]);
+
+    // Server-side search for stock items - efficient and searches all items
+    useEffect(() => {
+        let isMounted = true;
+        
+        const searchStockItems = async () => {
+            // Only search if user has typed something (at least 1 character)
+            if (!debouncedItemSearch || debouncedItemSearch.trim().length < 1) {
+                setStockItems([]);
+                setIsSearchingItems(false);
+                return;
+            }
+            
+            setIsSearchingItems(true);
+            
+            try {
+                // Fetch all matching items using server-side search
+                // Use high limit to get all results, or fetch all pages
+                const fetchAllSearchResults = async (searchTerm) => {
+                    let allItems = [];
+                    let page = 1;
+                    let hasMore = true;
+                    const limit = 100; // Max limit per page
+                    
+                    while (hasMore) {
+                        try {
+                            const response = await stockAPI.getAll(searchTerm, limit, page);
+                            const data = response.data || response;
+                            const pagination = response.pagination;
+                            
+                            if (Array.isArray(data)) {
+                                allItems.push(...data);
+                            } else if (data) {
+                                allItems.push(data);
+                            }
+                            
+                            hasMore = pagination?.hasMore || false;
+                            page++;
+                        } catch (err) {
+                            console.error('Error fetching search results page:', page, err);
+                            break;
+                        }
+                    }
+                    
+                    return allItems;
+                };
+                
+                const results = await fetchAllSearchResults(debouncedItemSearch.trim());
+                
+                if (!isMounted) return;
+                
+                setStockItems(results);
+            } catch (error) {
+                console.error('Error searching stock items:', error);
+                if (isMounted) {
+                    setStockItems([]);
+                }
+            } finally {
+                if (isMounted) {
+                    setIsSearchingItems(false);
+                }
+            }
+        };
+        
+        searchStockItems();
+        
+        return () => {
+            isMounted = false;
+        };
+    }, [debouncedItemSearch]);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -278,85 +331,9 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
         }
     };
 
-    // Filter items based on search - comprehensive search across all fields (case-insensitive)
-    // Based on Prisma Stock model schema - checking ALL fields explicitly
-    const filteredItems = stockItems.filter(item => {
-        if (!itemSearch || !itemSearch.trim()) return true;
-        
-        // Normalize search term: lowercase, trim, and normalize whitespace
-        const search = itemSearch.toLowerCase().trim().replace(/\s+/g, ' ');
-        if (!search) return true;
-        
-        // Helper to safely convert to string for search - always returns normalized lowercase
-        const normalizeForSearch = (value) => {
-            // Handle null/undefined
-            if (value == null || value === undefined) return '';
-            
-            // Handle strings - EXPLICITLY check for empty strings
-            if (typeof value === 'string') {
-                // Trim and normalize whitespace (multiple spaces to single space)
-                const normalized = value.trim().replace(/\s+/g, ' ');
-                return normalized === '' ? '' : normalized.toLowerCase();
-            }
-            
-            // Handle objects (like supplier object with name property)
-            if (typeof value === 'object' && value !== null) {
-                if (value.name) {
-                    const nameStr = String(value.name).trim().replace(/\s+/g, ' ');
-                    return nameStr === '' ? '' : nameStr.toLowerCase();
-                }
-                return '';
-            }
-            
-            // Handle numbers and other types
-            const str = String(value).trim().replace(/\s+/g, ' ');
-            return str === '' ? '' : str.toLowerCase();
-        };
-        
-        // Check ALL fields from Prisma Stock model schema explicitly
-        // Basic Info
-        if (normalizeForSearch(item.name).includes(search)) return true;
-        if (normalizeForSearch(item.description).includes(search)) return true; // EXPLICIT CHECK
-        if (normalizeForSearch(item.category).includes(search)) return true;
-        
-        // Product Details
-        if (normalizeForSearch(item.brand).includes(search)) return true; // EXPLICIT CHECK
-        if (normalizeForSearch(item.model).includes(search)) return true;
-        if (normalizeForSearch(item.partNumber).includes(search)) return true;
-        if (normalizeForSearch(item.sku).includes(search)) return true;
-        
-        // Technical Specifications
-        if (normalizeForSearch(item.specifications).includes(search)) return true;
-        if (normalizeForSearch(item.voltage).includes(search)) return true;
-        if (normalizeForSearch(item.power).includes(search)) return true;
-        if (normalizeForSearch(item.material).includes(search)) return true;
-        if (normalizeForSearch(item.size).includes(search)) return true;
-        if (normalizeForSearch(item.weight).includes(search)) return true;
-        if (normalizeForSearch(item.color).includes(search)) return true;
-        
-        // Inventory
-        if (normalizeForSearch(item.unit).includes(search)) return true;
-        if (normalizeForSearch(item.quantity).includes(search)) return true;
-        if (normalizeForSearch(item.minQuantity).includes(search)) return true;
-        
-        // Additional Info
-        if (normalizeForSearch(item.supplierName).includes(search)) return true;
-        if (normalizeForSearch(item.supplierCode).includes(search)) return true;
-        if (normalizeForSearch(item.warranty).includes(search)) return true;
-        if (normalizeForSearch(item.notes).includes(search)) return true;
-        
-        // Supplier relation (object with name property)
-        if (item.supplier) {
-            if (normalizeForSearch(item.supplier.name).includes(search)) return true;
-            if (normalizeForSearch(item.supplier.email).includes(search)) return true;
-        }
-        
-        // Pricing (convert to string for search)
-        if (normalizeForSearch(item.buyingPrice).includes(search)) return true;
-        if (normalizeForSearch(item.sellingPrice).includes(search)) return true;
-        
-        return false;
-    });
+    // No client-side filtering needed - server-side search handles it
+    // stockItems already contains the filtered results from the API
+    const filteredItems = stockItems;
 
     return (
         <div className="w-full max-w-full mx-0 px-0">
@@ -548,10 +525,15 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
                                 setIsItemDropdownVisible(true);
                             }}
                             onFocus={() => setIsItemDropdownVisible(true)}
-                            placeholder="Search all fields: name, description, category, brand, model, part#, SKU, specs, voltage, power, material, size, weight, color, supplier, warranty, notes, prices..."
+                            placeholder="Type to search all stock items (searches name, description, brand, category, and all fields)..."
                             className="w-full p-2 sm:p-3 border border-gray-300 rounded-md text-sm sm:text-base"
                         />
-                        {isItemDropdownVisible && filteredItems.length > 0 && (
+                        {isSearchingItems && (
+                            <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg p-3 text-center text-sm text-gray-500">
+                                Searching...
+                            </div>
+                        )}
+                        {isItemDropdownVisible && !isSearchingItems && filteredItems.length > 0 && (
                             <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-96 overflow-y-auto">
                                 {filteredItems.map(item => (
                                     <div
@@ -611,6 +593,11 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
                                         </div>
                                     </div>
                                 ))}
+                            </div>
+                        )}
+                        {isItemDropdownVisible && !isSearchingItems && itemSearch.trim().length >= 1 && filteredItems.length === 0 && (
+                            <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg p-3 text-center text-sm text-gray-500">
+                                No items found matching "{itemSearch}"
                             </div>
                         )}
                     </div>
