@@ -280,45 +280,79 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
 
     // Filter items based on search - comprehensive search across all fields (case-insensitive)
     const filteredItems = stockItems.filter(item => {
-        if (!itemSearch.trim()) return true;
+        if (!itemSearch || !itemSearch.trim()) return true;
         
-        const search = itemSearch.toLowerCase().trim();
-        // Helper to safely convert to string for search - always returns lowercase
-        const safeToString = (value) => {
-            if (value == null || value === undefined || value === '') return '';
-            if (typeof value === 'string') return value.trim().toLowerCase();
-            if (typeof value === 'object' && value.name) return String(value.name).trim().toLowerCase();
-            return String(value).trim().toLowerCase();
+        // Normalize search term: lowercase, trim, and normalize whitespace
+        const search = itemSearch.toLowerCase().trim().replace(/\s+/g, ' ');
+        if (!search) return true;
+        
+        // Helper to safely convert to string for search - always returns normalized lowercase
+        const normalizeForSearch = (value) => {
+            // Handle null/undefined
+            if (value == null || value === undefined) return '';
+            
+            // Handle strings
+            if (typeof value === 'string') {
+                // Trim and normalize whitespace (multiple spaces to single space)
+                const normalized = value.trim().replace(/\s+/g, ' ');
+                return normalized === '' ? '' : normalized.toLowerCase();
+            }
+            
+            // Handle objects (like supplier object with name property)
+            if (typeof value === 'object' && value !== null) {
+                if (value.name) {
+                    const nameStr = String(value.name).trim().replace(/\s+/g, ' ');
+                    return nameStr === '' ? '' : nameStr.toLowerCase();
+                }
+                return '';
+            }
+            
+            // Handle numbers and other types
+            const str = String(value).trim().replace(/\s+/g, ' ');
+            return str === '' ? '' : str.toLowerCase();
         };
         
-        // Normalize all searchable fields to lowercase for comparison
-        const normalizedFields = [
-            safeToString(item.name),
-            safeToString(item.description),
-            safeToString(item.brand),
-            safeToString(item.model),
-            safeToString(item.category),
-            safeToString(item.partNumber),
-            safeToString(item.sku),
-            safeToString(item.specifications),
-            safeToString(item.voltage),
-            safeToString(item.power),
-            safeToString(item.material),
-            safeToString(item.size),
-            safeToString(item.weight),
-            safeToString(item.color),
-            safeToString(item.unit),
-            safeToString(item.supplierCode),
-            safeToString(item.warranty),
-            safeToString(item.notes),
-            safeToString(item.supplier),
-            safeToString(item.sellingPrice),
-            safeToString(item.buyingPrice),
-            safeToString(item.quantity)
+        // Get all searchable field values - check each one individually
+        const fieldsToCheck = [
+            item.name,
+            item.description,
+            item.brand,
+            item.model,
+            item.category,
+            item.partNumber,
+            item.sku,
+            item.specifications,
+            item.voltage,
+            item.power,
+            item.material,
+            item.size,
+            item.weight,
+            item.color,
+            item.unit,
+            item.supplierCode,
+            item.warranty,
+            item.notes,
+            item.supplier, // Could be object or string
+            item.sellingPrice,
+            item.buyingPrice,
+            item.quantity
         ];
         
-        // Check if search term appears in any normalized field
-        return normalizedFields.some(field => field && field.includes(search));
+        // Check if search term appears in any field (case-insensitive)
+        for (const fieldValue of fieldsToCheck) {
+            // Skip null/undefined
+            if (fieldValue == null || fieldValue === undefined) continue;
+            
+            // Normalize the value
+            const normalized = normalizeForSearch(fieldValue);
+            
+            // Check if normalized value contains the search term (must be non-empty)
+            if (normalized && normalized.length > 0 && normalized.includes(search)) {
+                return true;
+            }
+        }
+        
+        return false;
     });
 
     return (
