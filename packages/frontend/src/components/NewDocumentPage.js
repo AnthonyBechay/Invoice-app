@@ -278,49 +278,47 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
         }
     };
 
-    // Filter items based on search - comprehensive search across all fields
+    // Filter items based on search - comprehensive search across all fields (case-insensitive)
     const filteredItems = stockItems.filter(item => {
         if (!itemSearch.trim()) return true;
         
-        const search = itemSearch.toLowerCase();
-        // Helper to safely convert to string for search
+        const search = itemSearch.toLowerCase().trim();
+        // Helper to safely convert to string for search - always returns lowercase
         const safeToString = (value) => {
-            if (value == null) return '';
-            if (typeof value === 'string') return value;
-            if (typeof value === 'object' && value.name) return value.name;
-            return String(value);
+            if (value == null || value === undefined || value === '') return '';
+            if (typeof value === 'string') return value.trim().toLowerCase();
+            if (typeof value === 'object' && value.name) return String(value.name).trim().toLowerCase();
+            return String(value).trim().toLowerCase();
         };
         
-        // Create array of all searchable fields
-        const searchableFields = [
-            item.name,
-            item.description,
-            item.brand,
-            item.model,
-            item.category,
-            item.partNumber,
-            item.sku,
-            item.specifications,
-            item.voltage,
-            item.power,
-            item.material,
-            item.size,
-            item.weight,
-            item.color,
-            item.unit,
-            item.supplierCode,
-            item.warranty,
-            item.notes,
+        // Normalize all searchable fields to lowercase for comparison
+        const normalizedFields = [
+            safeToString(item.name),
+            safeToString(item.description),
+            safeToString(item.brand),
+            safeToString(item.model),
+            safeToString(item.category),
+            safeToString(item.partNumber),
+            safeToString(item.sku),
+            safeToString(item.specifications),
+            safeToString(item.voltage),
+            safeToString(item.power),
+            safeToString(item.material),
+            safeToString(item.size),
+            safeToString(item.weight),
+            safeToString(item.color),
+            safeToString(item.unit),
+            safeToString(item.supplierCode),
+            safeToString(item.warranty),
+            safeToString(item.notes),
             safeToString(item.supplier),
-            String(item.sellingPrice || ''),
-            String(item.buyingPrice || ''),
-            String(item.quantity || '')
+            safeToString(item.sellingPrice),
+            safeToString(item.buyingPrice),
+            safeToString(item.quantity)
         ];
         
-        // Check if search term appears in any field
-        return searchableFields.some(field => 
-            field && String(field).toLowerCase().includes(search)
-        );
+        // Check if search term appears in any normalized field
+        return normalizedFields.some(field => field && field.includes(search));
     });
 
     return (

@@ -193,10 +193,23 @@ const PaymentsPage = () => {
 
             // Handle payment from client account balance
             if (payFromAccount && formData.documentId) {
+                // Validate that client has sufficient balance
                 if (clientBalance < amount) {
                     setFeedback({
                         type: 'error',
-                        message: `Insufficient client balance. Available: $${clientBalance.toFixed(2)}, Required: $${amount.toFixed(2)}`
+                        message: `Cannot settle invoice: Insufficient client balance. Available: $${clientBalance.toFixed(2)}, Required: $${amount.toFixed(2)}. Please add more funds to client account first.`
+                    });
+                    setLoading(false);
+                    setIsSubmitting(false);
+                    return;
+                }
+                
+                // Also validate that amount doesn't exceed outstanding
+                const outstandingAmount = getOutstandingAmount(formData.documentId);
+                if (amount > outstandingAmount) {
+                    setFeedback({
+                        type: 'error',
+                        message: `Cannot settle more than outstanding amount. Outstanding: $${outstandingAmount.toFixed(2)}, Attempted: $${amount.toFixed(2)}`
                     });
                     setLoading(false);
                     setIsSubmitting(false);
@@ -211,8 +224,7 @@ const PaymentsPage = () => {
                     return dateA - dateB;
                 });
 
-                const outstanding = getOutstandingAmount(formData.documentId);
-                const amountToSettle = Math.min(amount, outstanding); // Cap to outstanding amount
+                const amountToSettle = Math.min(amount, outstandingAmount); // Cap to outstanding amount
                 const remainder = amount - amountToSettle; // Amount that exceeds outstanding
 
                 // Allocate payments to invoice (FIFO)
@@ -561,11 +573,24 @@ const PaymentsPage = () => {
 
             const clientBalance = getClientAccountBalance(clientId);
             const settleAmount = parseFloat(amount);
+            const outstanding = getOutstandingAmount(documentId);
 
+            // Validate client has sufficient balance
             if (clientBalance < settleAmount) {
                 setFeedback({
                     type: 'error',
-                    message: `Insufficient client balance. Available: $${clientBalance.toFixed(2)}, Required: $${settleAmount.toFixed(2)}`
+                    message: `Cannot settle invoice: Insufficient client balance. Available: $${clientBalance.toFixed(2)}, Required: $${settleAmount.toFixed(2)}. Please add more funds to client account first.`
+                });
+                setLoading(false);
+                setSettlementInProgress(false);
+                return;
+            }
+
+            // Validate amount doesn't exceed outstanding
+            if (settleAmount > outstanding) {
+                setFeedback({
+                    type: 'error',
+                    message: `Cannot settle more than outstanding amount. Outstanding: $${outstanding.toFixed(2)}, Attempted: $${settleAmount.toFixed(2)}`
                 });
                 setLoading(false);
                 setSettlementInProgress(false);
@@ -1046,6 +1071,11 @@ const PaymentsPage = () => {
                                             (Max: ${getOutstandingAmount(formData.documentId).toFixed(2)})
                                         </span>
                                     )}
+                                    {payFromAccount && formData.clientId && (
+                                        <span className="text-xs text-blue-600 ml-2">
+                                            (Available Balance: ${getClientAccountBalance(formData.clientId).toFixed(2)})
+                                        </span>
+                                    )}
                                 </label>
                                 <input
                                     type="number"
@@ -1054,11 +1084,24 @@ const PaymentsPage = () => {
                                     onChange={handleInputChange}
                                     step="0.01"
                                     min="0.01"
+                                    max={payFromAccount && formData.clientId ? getClientAccountBalance(formData.clientId) : undefined}
                                     required
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${
+                                        payFromAccount && formData.clientId && formData.amount && 
+                                        parseFloat(formData.amount) > getClientAccountBalance(formData.clientId)
+                                            ? 'border-red-500 focus:ring-red-500' 
+                                            : 'border-gray-300 focus:ring-indigo-500'
+                                    }`}
                                     placeholder="0.00"
                                 />
-                                {formData.documentId && formData.amount && parseFloat(formData.amount) > getOutstandingAmount(formData.documentId) && (
+                                {payFromAccount && formData.clientId && formData.amount && 
+                                 parseFloat(formData.amount) > getClientAccountBalance(formData.clientId) && (
+                                    <p className="text-xs text-red-600 mt-1 font-medium">
+                                        ⚠ Amount exceeds client balance! Available: ${getClientAccountBalance(formData.clientId).toFixed(2)}
+                                    </p>
+                                )}
+                                {formData.documentId && formData.amount && !payFromAccount && 
+                                 parseFloat(formData.amount) > getOutstandingAmount(formData.documentId) && (
                                     <p className="text-xs text-blue-600 mt-1 font-medium">
                                         ⓘ Excess amount (${(parseFloat(formData.amount) - getOutstandingAmount(formData.documentId)).toFixed(2)}) will be added to client account
                                     </p>
