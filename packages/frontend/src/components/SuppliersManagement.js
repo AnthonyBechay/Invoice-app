@@ -93,6 +93,8 @@ const SuppliersManagement = () => {
         }
 
         try {
+            setFeedback({ type: '', message: '' }); // Clear any previous feedback
+            
             if (editingSupplier) {
                 await suppliersAPI.update(editingSupplier.id, formData);
                 setFeedback({ type: 'success', message: 'Supplier updated successfully!' });
@@ -101,14 +103,20 @@ const SuppliersManagement = () => {
                 setFeedback({ type: 'success', message: 'Supplier created successfully!' });
             }
 
+            // Refresh the list first
             await fetchSuppliers();
+            
+            // Wait a bit longer to show success message, then close modal
             setTimeout(() => {
                 handleCloseModal();
-                setFeedback({ type: '', message: '' });
-            }, 1500);
+                // Clear feedback after modal closes to prevent flashing
+                setTimeout(() => setFeedback({ type: '', message: '' }), 100);
+            }, 2000);
         } catch (error) {
             console.error('Error saving supplier:', error);
-            setFeedback({ type: 'error', message: 'Failed to save supplier.' });
+            const errorMessage = error.response?.data?.error || error.message || 'Failed to save supplier. Please try again.';
+            setFeedback({ type: 'error', message: errorMessage });
+            // Don't close modal on error - let user see the error and try again
         }
     };
 

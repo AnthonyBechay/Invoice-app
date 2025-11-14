@@ -281,6 +281,14 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
     // Filter items based on search - comprehensive search across all fields
     const filteredItems = stockItems.filter(item => {
         const search = itemSearch.toLowerCase();
+        // Helper to safely convert to string for search
+        const safeToString = (value) => {
+            if (value == null) return '';
+            if (typeof value === 'string') return value;
+            if (typeof value === 'object' && value.name) return value.name;
+            return String(value);
+        };
+        
         return (
             item.name?.toLowerCase().includes(search) ||
             item.description?.toLowerCase().includes(search) ||
@@ -293,7 +301,7 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
             item.voltage?.toLowerCase().includes(search) ||
             item.power?.toLowerCase().includes(search) ||
             item.material?.toLowerCase().includes(search) ||
-            item.supplier?.toLowerCase().includes(search) ||
+            safeToString(item.supplier).toLowerCase().includes(search) ||
             item.sellingPrice?.toString().includes(search) ||
             item.buyingPrice?.toString().includes(search)
         );

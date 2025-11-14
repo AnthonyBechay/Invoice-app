@@ -365,8 +365,13 @@ const AdminPage = () => {
                                                             setSelectedUser(user);
                                                             setShowDeleteModal(true);
                                                         }}
-                                                        className="text-red-600 hover:text-red-900"
+                                                        className={`${
+                                                            user.email === 'anthonybechay1@gmail.com'
+                                                                ? 'text-gray-400 cursor-not-allowed'
+                                                                : 'text-red-600 hover:text-red-900 cursor-pointer'
+                                                        }`}
                                                         disabled={user.email === 'anthonybechay1@gmail.com'}
+                                                        style={{ pointerEvents: user.email === 'anthonybechay1@gmail.com' ? 'none' : 'auto' }}
                                                     >
                                                         Delete
                                                     </button>
