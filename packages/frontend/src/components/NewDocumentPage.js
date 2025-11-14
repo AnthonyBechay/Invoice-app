@@ -27,116 +27,133 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
     const [mode, setMode] = useState('create');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const fetchInitialData = useCallback(async () => {
-        try {
-            const [clientsResponse, stockResponse] = await Promise.all([
-                clientsAPI.getAll(),
-                stockAPI.getAll()
-            ]);
-            // Handle paginated response format
-            const clientsData = clientsResponse.data || clientsResponse;
-            const stockData = stockResponse.data || stockResponse;
-            setClients(clientsData);
-            setStockItems(stockData);
-        } catch (error) {
-            console.error("Error fetching initial data:", error);
-        }
-    }, []);
-
+    // Fetch initial data only once on mount or when documentToEdit changes
     useEffect(() => {
+        let isMounted = true;
+        
         const loadData = async () => {
-            await fetchInitialData();
-            
-            if (documentToEdit) {
-                // Fetch full document with items if not already present
-                let fullDocument = documentToEdit;
-                if (!documentToEdit.items || !Array.isArray(documentToEdit.items)) {
-                    if (documentToEdit.id) {
-                        console.log("NewDocumentPage: Fetching full document with items for editing, ID:", documentToEdit.id);
-                        try {
-                            fullDocument = await documentsAPI.getById(documentToEdit.id);
-                            console.log("NewDocumentPage: Received full document with items:", fullDocument.items?.length || 0, "items");
-                        } catch (error) {
-                            console.error("Error fetching full document for editing:", error);
-                            // Fallback to the document we have
+            try {
+                // Fetch clients and stock in parallel
+                const [clientsResponse, stockResponse] = await Promise.all([
+                    clientsAPI.getAll(),
+                    stockAPI.getAll()
+                ]);
+                
+                // Handle paginated response format
+                const clientsData = clientsResponse.data || clientsResponse;
+                const stockData = stockResponse.data || stockResponse;
+                
+                if (!isMounted) return;
+                
+                setClients(clientsData);
+                setStockItems(stockData);
+                
+                if (documentToEdit) {
+                    // Fetch full document with items if not already present
+                    let fullDocument = documentToEdit;
+                    if (!documentToEdit.items || !Array.isArray(documentToEdit.items)) {
+                        if (documentToEdit.id) {
+                            console.log("NewDocumentPage: Fetching full document with items for editing, ID:", documentToEdit.id);
+                            try {
+                                fullDocument = await documentsAPI.getById(documentToEdit.id);
+                                console.log("NewDocumentPage: Received full document with items:", fullDocument.items?.length || 0, "items");
+                            } catch (error) {
+                                console.error("Error fetching full document for editing:", error);
+                                // Fallback to the document we have
+                            }
                         }
                     }
-                }
 
-                setMode('edit');
-                setPageTitle(`Edit ${fullDocument.type === 'proforma' ? 'Proforma' : 'Invoice'}`);
-                setDocType(fullDocument.type);
-                setSelectedClient(fullDocument.clientId);
-                setClientSearch(fullDocument.clientName || fullDocument.client?.name || '');
+                    if (!isMounted) return;
 
-                // Map items properly for editing - ensure all fields are present and stockId is set
-                // Wait for stockItems to be loaded before mapping
-                const mappedItems = (fullDocument.items || []).map(item => {
-                    // Find the stock item if stockId exists
-                    let stockItem = null;
-                    if (item.stockId && stockItems.length > 0) {
-                        stockItem = stockItems.find(s => s.id === item.stockId);
+                    setMode('edit');
+                    setPageTitle(`Edit ${fullDocument.type === 'proforma' ? 'Proforma' : 'Invoice'}`);
+                    setDocType(fullDocument.type);
+                    setSelectedClient(fullDocument.clientId);
+                    setClientSearch(fullDocument.clientName || fullDocument.client?.name || '');
+
+                    // Map items properly for editing - use stockData directly from fetch
+                    const mappedItems = (fullDocument.items || []).map(item => {
+                        // Find the stock item if stockId exists - use stockData from fetch
+                        let stockItem = null;
+                        if (item.stockId && stockData.length > 0) {
+                            stockItem = stockData.find(s => s.id === item.stockId);
+                        }
+                        
+                        return {
+                            id: item.stockId || item.id || item.itemId || null,
+                            stockId: item.stockId || null,
+                            itemId: item.stockId || item.id || item.itemId || null,
+                            name: item.name || '',
+                            description: item.description || '',
+                            quantity: item.quantity || 0,
+                            unitPrice: item.unitPrice || 0,
+                            buyingPrice: item.buyingPrice || item.stock?.buyingPrice || stockItem?.buyingPrice || 0,
+                            sellingPrice: item.unitPrice || stockItem?.sellingPrice || 0,
+                            unit: item.unit || stockItem?.unit || '',
+                            // Preserve stock data if available
+                            ...(item.stock && {
+                                partNumber: item.stock.partNumber,
+                                sku: item.stock.sku,
+                                brand: item.stock.brand,
+                                model: item.stock.model,
+                                specifications: item.stock.specifications
+                            }),
+                            // Also include stock data from stockItems if found
+                            ...(stockItem && {
+                                partNumber: stockItem.partNumber,
+                                sku: stockItem.sku,
+                                brand: stockItem.brand,
+                                model: stockItem.model,
+                                specifications: stockItem.specifications
+                            })
+                        };
+                    });
+                    setLineItems(mappedItems);
+
+                    setLaborPrice(fullDocument.laborPrice || 0);
+                    setNotes(fullDocument.notes || '');
+                    setVatApplied(fullDocument.vatApplied || false);
+                    setDocumentNumber(fullDocument.documentNumber);
+                    if (fullDocument.date) {
+                        const existingDate = new Date(fullDocument.date);
+                        setDocumentDate(existingDate.toISOString().split('T')[0]);
                     }
+                    if (fullDocument.mandays) {
+                        setMandays(fullDocument.mandays);
+                        setShowMandays(true);
+                    }
+                    if (fullDocument.realMandays) {
+                        setRealMandays(fullDocument.realMandays);
+                        setShowRealMandays(true);
+                    }
+                } else {
+                    if (!isMounted) return;
                     
-                    return {
-                        id: item.stockId || item.id || item.itemId || null, // Use stockId for matching
-                        stockId: item.stockId || null,
-                        itemId: item.stockId || item.id || item.itemId || null,
-                        name: item.name || '',
-                        description: item.description || '',
-                        quantity: item.quantity || 0,
-                        unitPrice: item.unitPrice || 0,
-                        buyingPrice: item.buyingPrice || item.stock?.buyingPrice || stockItem?.buyingPrice || 0,
-                        sellingPrice: item.unitPrice || stockItem?.sellingPrice || 0,
-                        unit: item.unit || stockItem?.unit || '',
-                        // Preserve stock data if available
-                        ...(item.stock && {
-                            partNumber: item.stock.partNumber,
-                            sku: item.stock.sku,
-                            brand: item.stock.brand,
-                            model: item.stock.model,
-                            specifications: item.stock.specifications
-                        }),
-                        // Also include stock data from stockItems if found
-                        ...(stockItem && {
-                            partNumber: stockItem.partNumber,
-                            sku: stockItem.sku,
-                            brand: stockItem.brand,
-                            model: stockItem.model,
-                            specifications: stockItem.specifications
+                    setMode('create');
+                    setPageTitle('Create New Document');
+                    setDocType('proforma');
+                    
+                    // Only fetch document number once when creating new document
+                    documentsAPI.getNextNumber('proforma')
+                        .then(data => {
+                            if (isMounted) {
+                                setDocumentNumber(data.documentNumber);
+                            }
                         })
-                    };
-                });
-                setLineItems(mappedItems);
-
-                setLaborPrice(fullDocument.laborPrice || 0);
-                setNotes(fullDocument.notes || '');
-                setVatApplied(fullDocument.vatApplied || false);
-                setDocumentNumber(fullDocument.documentNumber);
-                if (fullDocument.date) {
-                    const existingDate = new Date(fullDocument.date);
-                    setDocumentDate(existingDate.toISOString().split('T')[0]);
+                        .catch(err => console.error("Error getting document number:", err));
                 }
-                if (fullDocument.mandays) {
-                    setMandays(fullDocument.mandays);
-                    setShowMandays(true);
-                }
-                if (fullDocument.realMandays) {
-                    setRealMandays(fullDocument.realMandays);
-                    setShowRealMandays(true);
-                }
-            } else {
-                setMode('create');
-                setPageTitle('Create New Document');
-                setDocType('proforma');
-                documentsAPI.getNextNumber('proforma')
-                    .then(data => setDocumentNumber(data.documentNumber))
-                    .catch(err => console.error("Error getting document number:", err));
+            } catch (error) {
+                console.error("Error fetching initial data:", error);
             }
         };
         
         loadData();
-    }, [documentToEdit, fetchInitialData, stockItems]);
+        
+        return () => {
+            isMounted = false;
+        };
+    }, [documentToEdit]); // Only depend on documentToEdit, not stockItems or fetchInitialData
 
     useEffect(() => {
         const handleClickOutside = (event) => {
