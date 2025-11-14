@@ -501,39 +501,51 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
                             className="w-full p-2 sm:p-3 border border-gray-300 rounded-md text-sm sm:text-base"
                         />
                         {isItemDropdownVisible && filteredItems.length > 0 && (
-                            <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-80 overflow-y-auto">
+                            <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-96 overflow-y-auto">
                                 {filteredItems.map(item => (
                                     <div
                                         key={item.id}
                                         onClick={() => handleAddItemToList(item)}
                                         className="p-3 hover:bg-gray-100 cursor-pointer border-b"
                                     >
-                                        <div className="flex justify-between items-start">
-                                            <div className="flex-1">
-                                                <div className="font-medium text-sm">{item.name}</div>
-                                                <div className="text-xs text-gray-600 mt-1">
+                                        <div className="flex justify-between items-start gap-3">
+                                            <div className="flex-1 min-w-0">
+                                                <div className="font-medium text-sm text-gray-900">{item.name}</div>
+                                                {item.description && (
+                                                    <div className="text-xs text-gray-600 mt-0.5 line-clamp-1">{item.description}</div>
+                                                )}
+                                                <div className="text-xs text-gray-600 mt-1 space-x-1">
                                                     {item.brand && <span className="font-medium">{item.brand}</span>}
-                                                    {item.model && <span> {item.model}</span>}
-                                                    {(item.brand || item.model) && (item.category || item.partNumber) && <span> • </span>}
-                                                    {item.category && <span className="text-gray-500">{item.category}</span>}
-                                                    {item.partNumber && <span> • Part #: {item.partNumber}</span>}
+                                                    {item.model && <span>{item.model}</span>}
+                                                    {item.category && <span className="text-gray-500">• {item.category}</span>}
                                                 </div>
-                                                {item.specifications && <div className="text-xs text-gray-500 mt-1">{item.specifications}</div>}
-                                                {(item.voltage || item.power || item.material) && (
-                                                    <div className="text-xs text-gray-500 mt-1">
-                                                        {item.voltage && <span>⚡ {item.voltage}</span>}
-                                                        {item.voltage && item.power && <span> • </span>}
-                                                        {item.power && <span>🔋 {item.power}</span>}
-                                                        {(item.voltage || item.power) && item.material && <span> • </span>}
-                                                        {item.material && <span>📦 {item.material}</span>}
+                                                <div className="text-xs text-gray-500 mt-1 space-x-1">
+                                                    {item.partNumber && <span>Part#: {item.partNumber}</span>}
+                                                    {item.sku && <span>• SKU: {item.sku}</span>}
+                                                </div>
+                                                {item.specifications && (
+                                                    <div className="text-xs text-gray-500 mt-1 line-clamp-1">{item.specifications}</div>
+                                                )}
+                                                <div className="text-xs text-gray-500 mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
+                                                    {item.voltage && <span>⚡ {item.voltage}</span>}
+                                                    {item.power && <span>🔋 {item.power}</span>}
+                                                    {item.material && <span>📦 {item.material}</span>}
+                                                    {item.size && <span>📏 {item.size}</span>}
+                                                    {item.color && <span>🎨 {item.color}</span>}
+                                                </div>
+                                                {item.quantity !== undefined && (
+                                                    <div className="text-xs text-blue-600 mt-1">
+                                                        Stock: {item.quantity} {item.unit || 'pcs'}
                                                     </div>
                                                 )}
                                             </div>
-                                            <div className="ml-3 text-right">
+                                            <div className="ml-3 text-right flex-shrink-0">
                                                 <div className="text-sm font-semibold text-green-600">${(item.sellingPrice || 0).toFixed(2)}</div>
                                                 <div className="text-xs text-gray-400">Cost: ${(item.buyingPrice || 0).toFixed(2)}</div>
-                                                {item.quantity !== undefined && (
-                                                    <div className="text-xs text-gray-500 mt-1">Stock: {item.quantity} {item.unit}</div>
+                                                {item.buyingPrice > 0 && item.sellingPrice > item.buyingPrice && (
+                                                    <div className="text-xs text-green-500 mt-0.5">
+                                                        +{(((item.sellingPrice - item.buyingPrice) / item.buyingPrice) * 100).toFixed(0)}%
+                                                    </div>
                                                 )}
                                             </div>
                                         </div>

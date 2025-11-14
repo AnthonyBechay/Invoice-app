@@ -206,6 +206,11 @@ const StockPage = () => {
     };
 
     const handleExportCSV = () => {
+        if (items.length === 0) {
+            alert('No items to export');
+            return;
+        }
+
         const csvData = items.map(item => ({
             'Name': item.name || '',
             'Description': item.description || '',
@@ -214,11 +219,11 @@ const StockPage = () => {
             'Model': item.model || '',
             'Part Number': item.partNumber || '',
             'SKU': item.sku || '',
-            'Buying Price': item.buyingPrice || 0,
-            'Selling Price': item.sellingPrice || item.unitPrice || 0,
+            'Buying Price': (item.buyingPrice || 0).toFixed(2),
+            'Selling Price': (item.sellingPrice || item.unitPrice || 0).toFixed(2),
             'Unit': item.unit || '',
-            'Quantity': item.quantity || 0,
-            'Min Quantity': item.minQuantity || 0,
+            'Quantity': (item.quantity || 0).toFixed(2),
+            'Min Quantity': (item.minQuantity || 0).toFixed(2),
             'Specifications': item.specifications || '',
             'Voltage': item.voltage || '',
             'Power': item.power || '',
@@ -226,22 +231,28 @@ const StockPage = () => {
             'Size': item.size || '',
             'Weight': item.weight || '',
             'Color': item.color || '',
-            'Supplier': item.supplier || '',
+            'Supplier': item.supplier?.name || item.supplier || item.supplierName || '',
             'Supplier Code': item.supplierCode || '',
             'Warranty': item.warranty || '',
             'Notes': item.notes || ''
         }));
 
-        const csv = Papa.unparse(csvData);
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        const url = URL.createObjectURL(blob);
-        link.setAttribute('href', url);
-        link.setAttribute('download', `stock_export_${new Date().toISOString().split('T')[0]}.csv`);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        try {
+            const csv = Papa.unparse(csvData);
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', `stock_export_${new Date().toISOString().split('T')[0]}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error('Error exporting CSV:', err);
+            alert('Failed to export CSV: ' + (err.message || 'Unknown error'));
+        }
     };
 
     const handleImportCSV = (e) => {
@@ -302,9 +313,70 @@ const StockPage = () => {
                         return;
                     }
 
-                    await stockAPI.batchCreate(validItems);
+                    // Check for duplicates against existing items
+                    const existingItems = items;
+                    const duplicateItems = [];
+                    const uniqueItems = [];
+
+                    for (const newItem of validItems) {
+                        // Create a normalized comparison key
+                        const normalizeField = (val) => String(val || '').trim().toLowerCase();
+                        
+                        // Check if all fields match an existing item
+                        const isDuplicate = existingItems.some(existing => {
+                            return (
+                                normalizeField(existing.name) === normalizeField(newItem.name) &&
+                                normalizeField(existing.description) === normalizeField(newItem.description) &&
+                                normalizeField(existing.category) === normalizeField(newItem.category) &&
+                                normalizeField(existing.brand) === normalizeField(newItem.brand) &&
+                                normalizeField(existing.model) === normalizeField(newItem.model) &&
+                                normalizeField(existing.partNumber) === normalizeField(newItem.partNumber) &&
+                                normalizeField(existing.sku) === normalizeField(newItem.sku) &&
+                                Math.abs((existing.buyingPrice || 0) - (newItem.buyingPrice || 0)) < 0.01 &&
+                                Math.abs((existing.sellingPrice || 0) - (newItem.sellingPrice || 0)) < 0.01 &&
+                                normalizeField(existing.unit) === normalizeField(newItem.unit) &&
+                                normalizeField(existing.specifications) === normalizeField(newItem.specifications) &&
+                                normalizeField(existing.voltage) === normalizeField(newItem.voltage) &&
+                                normalizeField(existing.power) === normalizeField(newItem.power) &&
+                                normalizeField(existing.material) === normalizeField(newItem.material) &&
+                                normalizeField(existing.size) === normalizeField(newItem.size) &&
+                                normalizeField(existing.weight) === normalizeField(newItem.weight) &&
+                                normalizeField(existing.color) === normalizeField(newItem.color) &&
+                                normalizeField(existing.supplierName || existing.supplier?.name || '') === normalizeField(newItem.supplierName) &&
+                                normalizeField(existing.supplierCode) === normalizeField(newItem.supplierCode) &&
+                                normalizeField(existing.warranty) === normalizeField(newItem.warranty) &&
+                                normalizeField(existing.notes) === normalizeField(newItem.notes)
+                            );
+                        });
+
+                        if (isDuplicate) {
+                            duplicateItems.push(newItem);
+                        } else {
+                            uniqueItems.push(newItem);
+                        }
+                    }
+
+                    if (duplicateItems.length > 0) {
+                        const proceed = window.confirm(
+                            `Found ${duplicateItems.length} duplicate item(s) that already exist in your stock.\n\n` +
+                            `Duplicates will be skipped.\n\n` +
+                            `Proceed with importing ${uniqueItems.length} unique item(s)?`
+                        );
+                        if (!proceed) {
+                            return;
+                        }
+                    }
+
+                    if (uniqueItems.length === 0) {
+                        alert('All items in the CSV file are duplicates. No new items to import.');
+                        return;
+                    }
+
+                    await stockAPI.batchCreate(uniqueItems);
                     await fetchItems();
-                    alert(`Successfully imported ${validItems.length} items`);
+                    const message = `Successfully imported ${uniqueItems.length} item(s)` + 
+                        (duplicateItems.length > 0 ? ` (${duplicateItems.length} duplicate(s) skipped)` : '');
+                    alert(message);
                 } catch (err) {
                     console.error('Error importing items:', err);
                     alert('Failed to import items: ' + (err.message || 'Unknown error'));
@@ -365,55 +437,67 @@ const StockPage = () => {
                 </div>
             )}
 
+            {/* Modal for Add/Edit Item */}
             {showForm && (
-                <form onSubmit={handleSaveItem} className="bg-white p-6 rounded-lg shadow-lg mb-6">
-                    <h2 className="text-xl font-bold mb-4">{editingItem ? 'Edit Item' : 'Add New Item'}</h2>
-
-                    {/* Basic Information */}
-                    <div className="mb-4">
-                        <h3 className="text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">Basic Information</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
-                                <input
-                                    type="text"
-                                    name="name"
-                                    value={newItem.name}
-                                    onChange={handleInputChange}
-                                    required
-                                    className="w-full p-2 border border-gray-300 rounded-md"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                                <select
-                                    name="category"
-                                    value={newItem.category}
-                                    onChange={handleInputChange}
-                                    className="w-full p-2 border border-gray-300 rounded-md"
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 overflow-y-auto">
+                    <div className="bg-white rounded-lg shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+                        <form onSubmit={handleSaveItem} className="p-6">
+                            <div className="flex justify-between items-center mb-4">
+                                <h2 className="text-xl font-bold">{editingItem ? 'Edit Item' : 'Add New Item'}</h2>
+                                <button
+                                    type="button"
+                                    onClick={resetForm}
+                                    className="text-gray-500 hover:text-gray-700 text-2xl font-bold"
                                 >
-                                    <option value="">Select category...</option>
-                                    {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                                </select>
+                                    ×
+                                </button>
                             </div>
-                            <div className="md:col-span-2">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                                <textarea
-                                    name="description"
-                                    value={newItem.description}
-                                    onChange={handleInputChange}
-                                    rows="2"
-                                    className="w-full p-2 border border-gray-300 rounded-md"
-                                />
-                            </div>
-                        </div>
-                    </div>
 
-                    {/* Product Details */}
-                    <div className="mb-4">
-                        <h3 className="text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">Product Details</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
+                            {/* Basic Information */}
+                            <div className="mb-4">
+                                <h3 className="text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">Basic Information</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                                        <input
+                                            type="text"
+                                            name="name"
+                                            value={newItem.name}
+                                            onChange={handleInputChange}
+                                            required
+                                            className="w-full p-2 border border-gray-300 rounded-md"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                                        <select
+                                            name="category"
+                                            value={newItem.category}
+                                            onChange={handleInputChange}
+                                            className="w-full p-2 border border-gray-300 rounded-md"
+                                        >
+                                            <option value="">Select category...</option>
+                                            {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                                        </select>
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                                        <textarea
+                                            name="description"
+                                            value={newItem.description}
+                                            onChange={handleInputChange}
+                                            rows="2"
+                                            className="w-full p-2 border border-gray-300 rounded-md"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Product Details */}
+                            <div className="mb-4">
+                                <h3 className="text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">Product Details</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Brand</label>
                                 <input
                                     type="text"
@@ -456,11 +540,11 @@ const StockPage = () => {
                         </div>
                     </div>
 
-                    {/* Pricing & Inventory */}
-                    <div className="mb-4">
-                        <h3 className="text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">Pricing & Inventory</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                            <div>
+                            {/* Pricing & Inventory */}
+                            <div className="mb-4">
+                                <h3 className="text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">Pricing & Inventory</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                    <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Buying Price</label>
                                 <input
                                     type="number"
@@ -522,11 +606,11 @@ const StockPage = () => {
                         </div>
                     </div>
 
-                    {/* Technical Specifications */}
-                    <div className="mb-4">
-                        <h3 className="text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">Technical Specs</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
+                            {/* Technical Specifications */}
+                            <div className="mb-4">
+                                <h3 className="text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">Technical Specs</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Voltage</label>
                                 <input
                                     type="text"
@@ -605,11 +689,11 @@ const StockPage = () => {
                         </div>
                     </div>
 
-                    {/* Supplier Information */}
-                    <div className="mb-4">
-                        <h3 className="text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">Supplier Info</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
+                            {/* Supplier Information */}
+                            <div className="mb-4">
+                                <h3 className="text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">Supplier Info</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Supplier</label>
                                 <select
                                     name="supplierId"
@@ -656,36 +740,38 @@ const StockPage = () => {
                         </div>
                     </div>
 
-                    {/* Notes */}
-                    <div className="mb-4">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-                        <textarea
-                            name="notes"
-                            value={newItem.notes}
-                            onChange={handleInputChange}
-                            rows="2"
-                            className="w-full p-2 border border-gray-300 rounded-md"
-                        />
-                    </div>
+                            {/* Notes */}
+                            <div className="mb-4">
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                                <textarea
+                                    name="notes"
+                                    value={newItem.notes}
+                                    onChange={handleInputChange}
+                                    rows="2"
+                                    className="w-full p-2 border border-gray-300 rounded-md"
+                                />
+                            </div>
 
-                    <div className="flex justify-end gap-2">
-                        <button
-                            type="button"
-                            onClick={resetForm}
-                            className="px-4 py-2 bg-gray-300 hover:bg-gray-400 rounded-lg"
-                            disabled={isSubmitting}
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="submit"
-                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg disabled:bg-indigo-300"
-                            disabled={isSubmitting}
-                        >
-                            {isSubmitting ? 'Saving...' : (editingItem ? 'Update Item' : 'Add Item')}
-                        </button>
+                            <div className="flex justify-end gap-2">
+                                <button
+                                    type="button"
+                                    onClick={resetForm}
+                                    className="px-4 py-2 bg-gray-300 hover:bg-gray-400 rounded-lg"
+                                    disabled={isSubmitting}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg disabled:bg-indigo-300"
+                                    disabled={isSubmitting}
+                                >
+                                    {isSubmitting ? 'Saving...' : (editingItem ? 'Update Item' : 'Add Item')}
+                                </button>
+                            </div>
+                        </form>
                     </div>
-                </form>
+                </div>
             )}
 
             <div className="mb-4">
