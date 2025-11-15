@@ -837,20 +837,57 @@ const PaymentsPage = ({ navigateTo }) => {
         <div className="max-w-7xl mx-auto">
             <style>{`
                 @media print {
+                    @page {
+                        margin: 1cm;
+                        size: A4;
+                    }
+                    * {
+                        -webkit-print-color-adjust: exact !important;
+                        print-color-adjust: exact !important;
+                    }
+                    body {
+                        margin: 0;
+                        padding: 0;
+                    }
                     body * {
                         visibility: hidden;
                     }
-                    .print-area, .print-area * {
-                        visibility: visible;
+                    .print-area,
+                    .print-area * {
+                        visibility: visible !important;
                     }
                     .print-area {
-                        position: absolute;
-                        left: 0;
-                        top: 0;
-                        width: 100%;
+                        position: absolute !important;
+                        left: 0 !important;
+                        top: 0 !important;
+                        width: 100% !important;
+                        max-width: 100% !important;
+                        margin: 0 !important;
+                        padding: 20px !important;
+                        background: white !important;
+                        box-shadow: none !important;
+                        border: none !important;
                     }
-                    .no-print {
-                        display: none;
+                    .no-print,
+                    .no-print * {
+                        display: none !important;
+                        visibility: hidden !important;
+                    }
+                    /* Ensure all text is visible */
+                    .print-area h1,
+                    .print-area h2,
+                    .print-area p,
+                    .print-area span,
+                    .print-area div {
+                        color: #000 !important;
+                        background: transparent !important;
+                    }
+                    /* Ensure logo is visible */
+                    .print-area img {
+                        display: block !important;
+                        visibility: visible !important;
+                        max-width: 200px !important;
+                        height: auto !important;
                     }
                 }
             `}</style>
@@ -1511,16 +1548,17 @@ const PaymentsPage = ({ navigateTo }) => {
                         <div className="p-6 overflow-y-auto flex-1">
                             <div ref={receiptPrintRef} className="print-area bg-white p-6 rounded-lg" style={{ maxWidth: '794px', margin: '0 auto' }}>
                                 {/* Company Info */}
-                                <div className="text-center mb-6 border-b pb-4">
+                                <div className="text-center mb-6 border-b-2 border-gray-300 pb-4">
                                     {userSettings?.logo && (
                                         <div className="mb-4 flex justify-center">
                                             <img 
                                                 src={userSettings.logo} 
                                                 alt="Company Logo" 
-                                                className="h-16 w-auto max-w-xs"
+                                                className="h-20 w-auto max-w-xs"
+                                                style={{ maxHeight: '80px' }}
                                                 onLoad={(e) => {
-                                                    // Ensure logo is loaded before PDF generation
                                                     e.target.style.display = 'block';
+                                                    e.target.style.visibility = 'visible';
                                                 }}
                                                 onError={(e) => {
                                                     e.target.style.display = 'none';
@@ -1528,58 +1566,64 @@ const PaymentsPage = ({ navigateTo }) => {
                                             />
                                         </div>
                                     )}
-                                    <h1 className="text-2xl font-bold text-gray-800">{userSettings?.companyName || 'Company Name'}</h1>
+                                    <h1 className="text-2xl font-bold text-gray-800 mb-2">{userSettings?.companyName || 'Company Name'}</h1>
                                     {userSettings?.companyAddress && (
-                                        <p className="text-gray-600 text-sm mt-1">{userSettings.companyAddress}</p>
+                                        <p className="text-gray-700 text-sm mb-1">{userSettings.companyAddress}</p>
                                     )}
                                     {userSettings?.companyPhone && (
-                                        <p className="text-gray-600 text-sm">{userSettings.companyPhone}</p>
+                                        <p className="text-gray-700 text-sm">{userSettings.companyPhone}</p>
+                                    )}
+                                    {userSettings?.companyVatNumber && (
+                                        <p className="text-gray-700 text-sm mt-1">VAT #: {userSettings.companyVatNumber}</p>
                                     )}
                                 </div>
 
                                 {/* Receipt Title */}
-                                <h2 className="text-xl font-bold text-gray-800 mb-4 text-center">PAYMENT RECEIPT</h2>
+                                <h2 className="text-2xl font-bold text-gray-900 mb-6 text-center uppercase tracking-wide">PAYMENT RECEIPT</h2>
 
                                 {/* Payment Details */}
-                                <div className="space-y-3 mb-6">
-                                    <div className="flex justify-between">
-                                        <span className="text-gray-600">Receipt Number:</span>
-                                        <span className="font-semibold">{selectedPaymentForView.id.substring(0, 8).toUpperCase()}</span>
+                                <div className="space-y-4 mb-6">
+                                    <div className="flex justify-between items-center py-2 border-b border-gray-200">
+                                        <span className="text-gray-700 font-medium">Receipt Number:</span>
+                                        <span className="font-bold text-gray-900 text-lg">{selectedPaymentForView.id.substring(0, 8).toUpperCase()}</span>
                                     </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-gray-600">Date:</span>
-                                        <span className="font-semibold">{new Date(selectedPaymentForView.paymentDate).toLocaleDateString()}</span>
+                                    <div className="flex justify-between items-center py-2 border-b border-gray-200">
+                                        <span className="text-gray-700 font-medium">Date:</span>
+                                        <span className="font-semibold text-gray-900">{new Date(selectedPaymentForView.paymentDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
                                     </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-gray-600">Client:</span>
-                                        <span className="font-semibold">{getClientName(selectedPaymentForView)}</span>
+                                    <div className="flex justify-between items-center py-2 border-b border-gray-200">
+                                        <span className="text-gray-700 font-medium">Client:</span>
+                                        <span className="font-semibold text-gray-900 text-right max-w-xs">{getClientName(selectedPaymentForView)}</span>
                                     </div>
                                     {selectedPaymentForView.invoiceNumber && (
-                                        <div className="flex justify-between">
-                                            <span className="text-gray-600">Invoice Number:</span>
-                                            <span className="font-semibold">{selectedPaymentForView.invoiceNumber}</span>
+                                        <div className="flex justify-between items-center py-2 border-b border-gray-200">
+                                            <span className="text-gray-700 font-medium">Invoice Number:</span>
+                                            <span className="font-semibold text-gray-900">{selectedPaymentForView.invoiceNumber}</span>
                                         </div>
                                     )}
-                                    <div className="flex justify-between">
-                                        <span className="text-gray-600">Payment Method:</span>
-                                        <span className="font-semibold capitalize">{(selectedPaymentForView.paymentMethod || '').replace('_', ' ')}</span>
-                                    </div>
-                                    <div className="flex justify-between border-t pt-3 mt-3">
-                                        <span className="text-lg font-bold text-gray-800">Amount Paid:</span>
-                                        <span className="text-lg font-bold text-green-600">${selectedPaymentForView.amount.toFixed(2)}</span>
+                                    <div className="flex justify-between items-center py-2 border-b border-gray-200">
+                                        <span className="text-gray-700 font-medium">Payment Method:</span>
+                                        <span className="font-semibold text-gray-900 capitalize">{(selectedPaymentForView.paymentMethod || 'N/A').replace('_', ' ')}</span>
                                     </div>
                                     {selectedPaymentForView.notes && (
-                                        <div className="mt-4 pt-4 border-t">
-                                            <p className="text-gray-600 text-sm"><strong>Notes:</strong></p>
-                                            <p className="text-gray-700 text-sm">{selectedPaymentForView.notes}</p>
+                                        <div className="py-2 border-b border-gray-200">
+                                            <p className="text-gray-700 font-medium mb-2">Notes:</p>
+                                            <p className="text-gray-700 text-sm whitespace-pre-wrap">{selectedPaymentForView.notes}</p>
                                         </div>
                                     )}
+                                    <div className="flex justify-between items-center py-4 mt-4 border-t-2 border-gray-400 bg-gray-50 px-4 rounded">
+                                        <span className="text-xl font-bold text-gray-900">Amount Paid:</span>
+                                        <span className="text-2xl font-bold text-green-700">${parseFloat(selectedPaymentForView.amount || 0).toFixed(2)}</span>
+                                    </div>
                                 </div>
 
                                 {/* Footer */}
-                                <div className="mt-8 pt-4 border-t text-center text-gray-500 text-xs">
-                                    <p>Thank you for your payment!</p>
-                                    <p className="mt-2">{userSettings?.companyName || 'Company Name'}</p>
+                                <div className="mt-8 pt-6 border-t-2 border-gray-300 text-center">
+                                    <p className="text-gray-600 text-sm mb-2">Thank you for your payment!</p>
+                                    <p className="text-gray-700 font-medium">{userSettings?.companyName || 'Company Name'}</p>
+                                    {userSettings?.footerMessage && (
+                                        <p className="text-gray-600 text-xs mt-2">{userSettings.footerMessage}</p>
+                                    )}
                                 </div>
                             </div>
                         </div>
