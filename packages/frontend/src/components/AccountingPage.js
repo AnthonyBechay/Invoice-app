@@ -75,7 +75,7 @@ const AccountingPage = () => {
         try {
             setLoading(true);
             const [documentsResponse, paymentsResponse] = await Promise.all([
-                documentsAPI.getAll(null, null, 500, 1, ''), // Fetch first 500 documents for stats
+                documentsAPI.getAll(null, null, 500, 1, '', true), // Fetch first 500 documents with items for stats
                 paymentsAPI.getAll(null, 500, 1, '') // Fetch first 500 payments for stats
             ]);
 
@@ -189,8 +189,25 @@ const AccountingPage = () => {
 
                 // Calculate collected profit
                 if (paid > 0) {
-                    const docItemsRevenue = doc.items ? doc.items.reduce((sum, item) => sum + ((item.quantity || 0) * (item.unitPrice || 0)), 0) : 0;
-                    const docItemsCost = doc.items ? doc.items.reduce((sum, item) => sum + ((item.quantity || 0) * (item.buyingPrice || item.stock?.buyingPrice || 0)), 0) : 0;
+                    const docItemsRevenue = doc.items && Array.isArray(doc.items) 
+                        ? doc.items.reduce((sum, item) => {
+                            if (item.quantity && item.unitPrice) {
+                                return sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0));
+                            }
+                            return sum;
+                        }, 0) 
+                        : 0;
+                    const docItemsCost = doc.items && Array.isArray(doc.items)
+                        ? doc.items.reduce((sum, item) => {
+                            // Only calculate cost for items with stockId (actual stock items)
+                            // Cost comes from stock.buyingPrice (fixed cost set in stock page)
+                            if (item.quantity && item.stockId && item.stock?.buyingPrice !== undefined) {
+                                const buyingPrice = parseFloat(item.stock.buyingPrice) || 0;
+                                return sum + ((parseFloat(item.quantity) || 0) * buyingPrice);
+                            }
+                            return sum;
+                        }, 0)
+                        : 0;
                     const docLaborRevenue = doc.laborPrice || 0;
 
                     let docDisplayMandaysRevenue = 0;
@@ -216,12 +233,21 @@ const AccountingPage = () => {
                 }
 
                 // Calculate items revenue and cost
-                if (doc.items && Array.isArray(doc.items)) {
+                if (doc.items && Array.isArray(doc.items) && doc.items.length > 0) {
                     doc.items.forEach(item => {
-                        const itemRevenue = (item.quantity || 0) * (item.unitPrice || 0);
-                        const itemCost = (item.quantity || 0) * (item.buyingPrice || item.stock?.buyingPrice || 0);
-                        itemsRevenue += itemRevenue;
-                        totalCost += itemCost;
+                        // Revenue: quantity × unitPrice (selling price from document - can vary per document)
+                        if (item.quantity && item.unitPrice) {
+                            const itemRevenue = (parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0);
+                            itemsRevenue += itemRevenue;
+                        }
+                        
+                        // Cost: quantity × buyingPrice from stock (fixed cost set in stock page)
+                        // Only calculate cost for items with stockId (actual stock items)
+                        if (item.quantity && item.stockId && item.stock?.buyingPrice !== undefined) {
+                            const buyingPrice = parseFloat(item.stock.buyingPrice) || 0;
+                            const itemCost = (parseFloat(item.quantity) || 0) * buyingPrice;
+                            totalCost += itemCost;
+                        }
                     });
                 }
             });
@@ -284,8 +310,25 @@ const AccountingPage = () => {
     const exportToCSV = () => {
         const headers = ['Date', 'Document #', 'Type', 'Status', 'Client', 'Items Revenue', 'Labor Revenue', 'Display Mandays', 'Real Mandays Cost', 'VAT', 'Total', 'Cost', 'Net Profit', 'Paid Amount', 'Collected Profit'];
         const rows = getFilteredDocuments.map(doc => {
-            const itemsRevenue = doc.items ? doc.items.reduce((sum, item) => sum + ((item.quantity || 0) * (item.unitPrice || 0)), 0) : 0;
-            const cost = doc.items ? doc.items.reduce((sum, item) => sum + ((item.quantity || 0) * (item.buyingPrice || item.stock?.buyingPrice || 0)), 0) : 0;
+            const itemsRevenue = doc.items && Array.isArray(doc.items)
+                ? doc.items.reduce((sum, item) => {
+                    if (item.quantity && item.unitPrice) {
+                        return sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0));
+                    }
+                    return sum;
+                }, 0)
+                : 0;
+            const cost = doc.items && Array.isArray(doc.items)
+                ? doc.items.reduce((sum, item) => {
+                    // Cost comes from stock.buyingPrice (fixed cost set in stock page)
+                    // Only calculate cost for items with stockId (actual stock items)
+                    if (item.quantity && item.stockId && item.stock?.buyingPrice !== undefined) {
+                        const buyingPrice = parseFloat(item.stock.buyingPrice) || 0;
+                        return sum + ((parseFloat(item.quantity) || 0) * buyingPrice);
+                    }
+                    return sum;
+                }, 0)
+                : 0;
 
             let displayMandaysRevenue = 0;
             if (doc.mandays && doc.mandays.days > 0) {
@@ -733,8 +776,25 @@ const AccountingPage = () => {
                             </thead>
                             <tbody className="text-gray-600 text-sm">
                                 {getFilteredDocuments.map(doc => {
-                                    const itemsRevenue = doc.items ? doc.items.reduce((sum, item) => sum + ((item.quantity || 0) * (item.unitPrice || 0)), 0) : 0;
-                                    const cost = doc.items ? doc.items.reduce((sum, item) => sum + ((item.quantity || 0) * (item.buyingPrice || item.stock?.buyingPrice || 0)), 0) : 0;
+                                    const itemsRevenue = doc.items && Array.isArray(doc.items)
+                                        ? doc.items.reduce((sum, item) => {
+                                            if (item.quantity && item.unitPrice) {
+                                                return sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0));
+                                            }
+                                            return sum;
+                                        }, 0)
+                                        : 0;
+                                    const cost = doc.items && Array.isArray(doc.items)
+                                        ? doc.items.reduce((sum, item) => {
+                                            // Cost comes from stock.buyingPrice (fixed cost set in stock page)
+                                            // Only calculate cost for items with stockId (actual stock items)
+                                            if (item.quantity && item.stockId && item.stock?.buyingPrice !== undefined) {
+                                                const buyingPrice = parseFloat(item.stock.buyingPrice) || 0;
+                                                return sum + ((parseFloat(item.quantity) || 0) * buyingPrice);
+                                            }
+                                            return sum;
+                                        }, 0)
+                                        : 0;
 
                                     let displayMandaysRevenue = 0;
                                     if (doc.mandays && doc.mandays.days > 0) {

@@ -63,7 +63,8 @@ router.get('/', async (req, res, next) => {
             select: {
               id: true,
               name: true,
-              sellingPrice: true
+              sellingPrice: true,
+              buyingPrice: true
             }
           }
         }
