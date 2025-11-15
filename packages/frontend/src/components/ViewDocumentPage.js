@@ -567,8 +567,9 @@ const ViewDocumentPage = ({ documentToView, navigateTo, previousPage }) => {
                                 if (stock) {
                                     if (stock.brand) stockDetails.push(stock.brand);
                                     if (stock.model) stockDetails.push(stock.model);
-                                    if (stock.category) stockDetails.push(stock.category);
-                                    if (stock.sku) stockDetails.push(`SKU: ${stock.sku}`);
+                                    if (stock.description) stockDetails.push(stock.description);
+                                    //if (stock.category) stockDetails.push(stock.category);
+                                    if (stock.sku) stockDetails.push(stock.sku);
                                     if (stock.specifications) stockDetails.push(stock.specifications);
                                     if (stock.voltage) stockDetails.push(stock.voltage);
                                     if (stock.power) stockDetails.push(stock.power);
@@ -576,9 +577,9 @@ const ViewDocumentPage = ({ documentToView, navigateTo, previousPage }) => {
                                     if (stock.size) stockDetails.push(stock.size);
                                     if (stock.weight) stockDetails.push(stock.weight);
                                     if (stock.color) stockDetails.push(stock.color);
-                                    if (stock.supplier?.name || stock.supplierName) stockDetails.push(stock.supplier?.name || stock.supplierName);
-                                    if (stock.supplierCode) stockDetails.push(stock.supplierCode);
-                                    if (stock.warranty) stockDetails.push(stock.warranty);
+                                    //if (stock.supplier?.name || stock.supplierName) stockDetails.push(stock.supplier?.name || stock.supplierName);
+                                    //if (stock.supplierCode) stockDetails.push(stock.supplierCode);
+                                    //if (stock.warranty) stockDetails.push(stock.warranty);
                                     if (stock.unit) stockDetails.push(stock.unit);
                                 }
                                 const detailsText = stockDetails.length > 0 ? stockDetails.join(' • ') : (item.description || '');

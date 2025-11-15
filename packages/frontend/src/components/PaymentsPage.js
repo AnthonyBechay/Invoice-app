@@ -812,20 +812,50 @@ const PaymentsPage = ({ navigateTo }) => {
         <div className="max-w-7xl mx-auto">
             <style>{`
                 @media print {
+                    /* Hide everything by default */
                     body * {
                         visibility: hidden;
                     }
+                    /* Show only the print area */
                     .print-area, .print-area * {
                         visibility: visible;
                     }
                     .print-area {
-                        position: absolute;
+                        position: fixed;
                         left: 0;
                         top: 0;
                         width: 100%;
+                        height: 100%;
+                        margin: 0;
+                        padding: 0;
+                        page-break-after: avoid;
+                        page-break-inside: avoid;
+                        background: white;
                     }
-                    .no-print {
+                    /* Hide all non-print elements */
+                    .no-print,
+                    .no-print *,
+                    header,
+                    nav,
+                    footer,
+                    button,
+                    .bg-black,
+                    .bg-opacity-50 {
                         display: none !important;
+                        visibility: hidden !important;
+                    }
+                    /* Ensure modal overlay doesn't print */
+                    .fixed {
+                        position: static !important;
+                    }
+                    @page {
+                        margin: 0.5cm;
+                        size: A4;
+                    }
+                    body {
+                        margin: 0;
+                        padding: 0;
+                        background: white;
                     }
                 }
             `}</style>
@@ -1573,13 +1603,6 @@ const PaymentsPage = ({ navigateTo }) => {
                                 className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-medium shadow-md"
                             >
                                 Print
-                            </button>
-                            <button
-                                onClick={handleGenerateReceiptPDF}
-                                disabled={isGeneratingReceiptPDF}
-                                className="px-6 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-medium shadow-md"
-                            >
-                                {isGeneratingReceiptPDF ? 'Generating PDF...' : 'Share PDF'}
                             </button>
                             {selectedPaymentForView?.documentId && navigateTo && (
                                 <button

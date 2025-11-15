@@ -9,9 +9,10 @@ const router = express.Router();
  */
 router.get('/', async (req, res, next) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user.id; // Always filter by authenticated user's ID for security
     const { limit: limitParam, page: pageParam, search } = req.query;
 
+    // IMPORTANT: Always filter by userId to ensure users only see their own payments
     const where = {
       userId
     };
