@@ -37,7 +37,6 @@ const PaymentsPage = ({ navigateTo }) => {
     const [showPaymentReceipt, setShowPaymentReceipt] = useState(false);
     const [paymentSearchTerm, setPaymentSearchTerm] = useState('');
     const debouncedPaymentSearch = useDebounce(paymentSearchTerm, 300);
-    const [displayedPaymentsLimit, setDisplayedPaymentsLimit] = useState(50);
     const [userSettings, setUserSettings] = useState(null);
     const [isGeneratingReceiptPDF, setIsGeneratingReceiptPDF] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -72,8 +71,17 @@ const PaymentsPage = ({ navigateTo }) => {
 
     // Fetch data on mount and when search changes
     useEffect(() => {
-        fetchData(true);
-    }, [debouncedPaymentSearch]);
+        let isMounted = true;
+        const loadData = async () => {
+            if (isMounted) {
+                await fetchData(true);
+            }
+        };
+        loadData();
+        return () => {
+            isMounted = false;
+        };
+    }, [debouncedPaymentSearch, fetchData]); // Include fetchData in dependencies since it's memoized
 
     // Refresh data when page becomes visible (handles case when payments added from other pages)
     useEffect(() => {
@@ -92,21 +100,31 @@ const PaymentsPage = ({ navigateTo }) => {
             document.removeEventListener('visibilitychange', handleVisibilityChange);
             clearTimeout(refreshTimeout);
         };
-    }, []);
+    }, [fetchData]); // Include fetchData since it's memoized
 
     const [displayedPaymentsLimit, setDisplayedPaymentsLimit] = useState(20);
     const [allPayments, setAllPayments] = useState([]); // Store all fetched payments
     const [hasMorePayments, setHasMorePayments] = useState(false);
     const [paymentStatusFilter, setPaymentStatusFilter] = useState('all'); // 'all', 'unpaid', 'partial', 'paid'
+    
+    // Use ref to track current limit without causing re-renders or dependency issues
+    const displayedPaymentsLimitRef = useRef(20);
+    
+    // Update ref whenever state changes
+    useEffect(() => {
+        displayedPaymentsLimitRef.current = displayedPaymentsLimit;
+    }, [displayedPaymentsLimit]);
 
-    const fetchData = async (resetLimit = true) => {
+    // Memoize fetchData to prevent infinite loops - only depends on debouncedPaymentSearch
+    const fetchData = useCallback(async (resetLimit = true) => {
         try {
             setLoading(true);
-            const limit = resetLimit ? 20 : 20; // Load 20 at a time
-            const page = resetLimit ? 1 : Math.floor((displayedPaymentsLimit || 20) / 20) + 1;
+            const limit = 20; // Load 20 at a time
+            // Use ref to get current limit without including it in dependencies
+            const currentPage = resetLimit ? 1 : Math.floor((displayedPaymentsLimitRef.current || 20) / 20) + 1;
             
             const [paymentsResponse, clientsResponse, documentsResponse] = await Promise.all([
-                paymentsAPI.getAll(null, limit, page, debouncedPaymentSearch || ''), // Use search term for server-side search
+                paymentsAPI.getAll(null, limit, currentPage, debouncedPaymentSearch || ''), // Use search term for server-side search
                 clientsAPI.getAll('', 100, 1), // Fetch first 100 clients
                 documentsAPI.getAll('invoice', null, 100, 1, '') // Fetch first 100 invoices
             ]);
@@ -121,12 +139,17 @@ const PaymentsPage = ({ navigateTo }) => {
                 setAllPayments(Array.isArray(paymentsData) ? paymentsData : []);
                 setPayments(Array.isArray(paymentsData) ? paymentsData : []);
                 setDisplayedPaymentsLimit(limit);
+                displayedPaymentsLimitRef.current = limit;
             } else {
                 // Append for load more
                 const newPayments = Array.isArray(paymentsData) ? paymentsData : [];
                 setAllPayments(prev => [...prev, ...newPayments]);
                 setPayments(prev => [...prev, ...newPayments]);
-                setDisplayedPaymentsLimit(prev => prev + limit);
+                setDisplayedPaymentsLimit(prev => {
+                    const newLimit = prev + limit;
+                    displayedPaymentsLimitRef.current = newLimit;
+                    return newLimit;
+                });
             }
             
             setHasMorePayments(pagination?.hasMore || false);
@@ -138,7 +161,7 @@ const PaymentsPage = ({ navigateTo }) => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [debouncedPaymentSearch]); // Only depend on debouncedPaymentSearch to prevent infinite loops
 
     const [deletingPaymentIds, setDeletingPaymentIds] = useState(new Set());
 
