@@ -493,13 +493,13 @@ export const adminAPI = {
     });
   },
 
-  getUnusedDocuments: async (params = {}) => {
+  getDocuments: async (params = {}) => {
     const query = new URLSearchParams(params).toString();
-    return apiRequest(`/admin/unused/documents${query ? `?${query}` : ''}`);
+    return apiRequest(`/admin/documents${query ? `?${query}` : ''}`);
   },
 
-  deleteUnusedDocuments: async (ids) => {
-    return apiRequest('/admin/unused/documents', {
+  deleteDocuments: async (ids) => {
+    return apiRequest('/admin/documents', {
       method: 'DELETE',
       body: JSON.stringify({ ids }),
     });

@@ -113,7 +113,7 @@ const AdminPage = () => {
             const [stockData, clientsData, documentsData] = await Promise.all([
                 adminAPI.getUnusedStock(params),
                 adminAPI.getUnusedClients(params),
-                adminAPI.getUnusedDocuments(documentParams)
+                adminAPI.getDocuments(documentParams)
             ]);
             setUnusedStock(stockData);
             setUnusedClients(clientsData);
@@ -256,7 +256,7 @@ const AdminPage = () => {
         try {
             setDeletingUnused(true);
             setFeedback({ type: '', message: '' });
-            const result = await adminAPI.deleteUnusedDocuments(Array.from(selectedDocumentIds));
+            const result = await adminAPI.deleteDocuments(Array.from(selectedDocumentIds));
             setFeedback({ 
                 type: 'success', 
                 message: result.message || `Successfully deleted ${result.deleted} document(s)` 
@@ -684,7 +684,7 @@ const AdminPage = () => {
                             <div>
                                 <h2 className="text-2xl font-bold text-gray-800 mb-2">Data Cleanup</h2>
                                 <p className="text-gray-600 text-sm">
-                                    Delete unused stock items, clients, and documents (invoices/proformas) per user.
+                                    Delete unused stock items, unused clients, and any documents (invoices/proformas) per user.
                                     <strong className="text-red-600"> This action cannot be undone.</strong>
                                 </p>
                             </div>
@@ -893,7 +893,7 @@ const AdminPage = () => {
                                     <div>
                                         <h3 className="text-xl font-bold text-gray-800">Documents (Invoices & Proformas)</h3>
                                         <p className="text-sm text-gray-500 mt-1">
-                                            {unusedDocuments.length} document(s) found
+                                            {unusedDocuments.length} document(s) found - Can delete any document (used or unused)
                                         </p>
                                     </div>
                                     <div className="flex items-center gap-3">

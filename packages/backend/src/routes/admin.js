@@ -498,9 +498,9 @@ router.delete('/unused/clients', async (req, res, next) => {
 });
 
 /**
- * Get documents (invoices/proformas) by user
+ * Get documents (invoices/proformas) by user - any document (used or unused)
  */
-router.get('/unused/documents', async (req, res, next) => {
+router.get('/documents', async (req, res, next) => {
   try {
     const { userId, type } = req.query;
     
@@ -512,7 +512,7 @@ router.get('/unused/documents', async (req, res, next) => {
       where.type = type.toUpperCase();
     }
     
-    // Get all documents matching the filter
+    // Get all documents matching the filter (any document, used or unused)
     const documents = await prisma.document.findMany({
       where,
       select: {
@@ -541,9 +541,9 @@ router.get('/unused/documents', async (req, res, next) => {
 });
 
 /**
- * Delete documents (bulk delete)
+ * Delete documents (bulk delete) - can delete any document (used or unused)
  */
-router.delete('/unused/documents', async (req, res, next) => {
+router.delete('/documents', async (req, res, next) => {
   try {
     const { ids } = req.body;
 
