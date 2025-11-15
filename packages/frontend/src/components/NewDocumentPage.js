@@ -228,6 +228,7 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
         const fields = [];
         if (item.brand) fields.push(`Brand: ${item.brand}`);
         if (item.model) fields.push(`Model: ${item.model}`);
+        if (item.description) fields.push(`Desc: ${item.description}`);
         if (item.category) fields.push(`Category: ${item.category}`);
         if (item.partNumber) fields.push(`Part#: ${item.partNumber}`);
         if (item.sku) fields.push(`SKU: ${item.sku}`);
@@ -239,9 +240,9 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
         if (item.weight) fields.push(`Weight: ${item.weight}`);
         if (item.color) fields.push(`Color: ${item.color}`);
         if (item.supplier?.name || item.supplierName) fields.push(`Supplier: ${item.supplier?.name || item.supplierName}`);
-        if (item.supplierCode) fields.push(`Supplier Code: ${item.supplierCode}`);
-        if (item.warranty) fields.push(`Warranty: ${item.warranty}`);
-        if (item.unit) fields.push(`Unit: ${item.unit}`);
+        //if (item.supplierCode) fields.push(`Supplier Code: ${item.supplierCode}`);
+        //if (item.warranty) fields.push(`Warranty: ${item.warranty}`);
+        if (item.unit) fields.push(item.unit);
         return fields.join(' • ');
     };
 

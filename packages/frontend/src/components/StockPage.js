@@ -43,12 +43,10 @@ const StockPage = () => {
     const [error, setError] = useState('');
 
     useEffect(() => {
-        fetchItems();
-    }, []); // Only fetch once on mount, search is handled client-side
-
-    useEffect(() => {
         fetchSuppliers();
     }, []);
+    
+    // Initial load is handled by the useEffect for debouncedSearchTerm
 
     const fetchSuppliers = async () => {
         try {
@@ -61,45 +59,36 @@ const StockPage = () => {
         }
     };
 
-    const [allItems, setAllItems] = useState([]);
+    const [displayedItemsLimit, setDisplayedItemsLimit] = useState(50);
+    const [allItems, setAllItems] = useState([]); // Store all items for search
+    const [hasMoreItems, setHasMoreItems] = useState(false);
 
-    // Helper function to fetch ALL items (handles pagination)
-    const fetchAllItems = async () => {
-        const allItemsList = [];
-        let page = 1;
-        let hasMore = true;
-        const limit = 100; // Max limit per page
-
-        while (hasMore) {
-            try {
-                const response = await stockAPI.getAll('', limit, page);
-                const data = response.data || response;
-                const pagination = response.pagination;
-                
-                if (Array.isArray(data)) {
-                    allItemsList.push(...data);
-                } else if (data) {
-                    allItemsList.push(data);
-                }
-
-                hasMore = pagination?.hasMore || false;
-                page++;
-            } catch (err) {
-                console.error('Error fetching items page:', page, err);
-                break;
-            }
-        }
-
-        return allItemsList;
-    };
-
-    const fetchItems = async () => {
+    // Fetch items with pagination
+    const fetchItems = async (searchTerm = '', resetLimit = true) => {
         try {
             setLoading(true);
-            // Fetch all items without search filter for comprehensive client-side search
-            const allItemsList = await fetchAllItems();
-            setAllItems(allItemsList);
-            setItems(allItemsList);
+            const limit = 50; // Load 50 items per page
+            const page = resetLimit ? 1 : Math.floor((displayedItemsLimit || 50) / 50) + 1;
+            
+            // Use server-side search if search term provided, otherwise fetch next page
+            const response = await stockAPI.getAll(searchTerm || '', limit, page);
+            const data = response.data || response;
+            const pagination = response.pagination;
+            
+            const itemsList = Array.isArray(data) ? data : (data ? [data] : []);
+            
+            if (resetLimit) {
+                setAllItems(itemsList);
+                setItems(itemsList);
+                setDisplayedItemsLimit(limit);
+            } else {
+                // Append to existing items for load more
+                setAllItems(prev => [...prev, ...itemsList]);
+                setItems(prev => [...prev, ...itemsList]);
+                setDisplayedItemsLimit(prev => prev + limit);
+            }
+            
+            setHasMoreItems(pagination?.hasMore || false);
         } catch (err) {
             console.error('Error fetching stock items:', err);
             setError('Failed to fetch stock items');
@@ -108,47 +97,16 @@ const StockPage = () => {
         }
     };
 
-    // Enhanced client-side search across all fields
+    // Server-side search when search term changes, or initial load
     useEffect(() => {
-        if (!debouncedSearchTerm) {
-            setItems(allItems);
-            return;
+        if (debouncedSearchTerm) {
+            // Use server-side search to search all items
+            fetchItems(debouncedSearchTerm, true);
+        } else {
+            // Reset to first 50 items when search is cleared or on initial load
+            fetchItems('', true);
         }
-
-        const search = debouncedSearchTerm.toLowerCase();
-        const filtered = allItems.filter(item => {
-            const searchableFields = [
-                item.name,
-                item.description,
-                item.category,
-                item.brand,
-                item.model,
-                item.partNumber,
-                item.sku,
-                item.specifications,
-                item.voltage,
-                item.power,
-                item.material,
-                item.size,
-                item.weight,
-                item.color,
-                item.supplier?.name || item.supplier || item.supplierName,
-                item.supplierCode,
-                item.warranty,
-                item.notes,
-                item.unit,
-                String(item.buyingPrice || ''),
-                String(item.sellingPrice || ''),
-                String(item.quantity || '')
-            ];
-
-            return searchableFields.some(field => 
-                field && String(field).toLowerCase().includes(search)
-            );
-        });
-
-        setItems(filtered);
-    }, [debouncedSearchTerm, allItems]);
+    }, [debouncedSearchTerm]);
 
     const handleInputChange = (e) => {
         const { name, value } = e.target;
@@ -1039,8 +997,23 @@ const StockPage = () => {
                                         </td>
                                         <td className="py-3 px-4">
                                             <div className="font-medium">{item.name}</div>
-                                            {item.description && <div className="text-xs text-gray-600">{item.description.substring(0, 50)}{item.description.length > 50 ? '...' : ''}</div>}
-                                            {item.specifications && <div className="text-xs text-gray-500">{item.specifications.substring(0, 40)}{item.specifications.length > 40 ? '...' : ''}</div>}
+                                            {item.description && <div className="text-xs text-gray-600 mt-1">{item.description}</div>}
+                                            {item.specifications && <div className="text-xs text-gray-500 mt-1">{item.specifications}</div>}
+                                            <div className="text-xs text-gray-500 mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
+                                                {item.voltage && <span>⚡ {item.voltage}</span>}
+                                                {item.power && <span>🔋 {item.power}</span>}
+                                                {item.material && <span>📦 {item.material}</span>}
+                                                {item.size && <span>📏 {item.size}</span>}
+                                                {item.weight && <span>⚖️ {item.weight}</span>}
+                                                {item.color && <span>🎨 {item.color}</span>}
+                                            </div>
+                                            {(item.supplier?.name || item.supplierName) && (
+                                                <div className="text-xs text-gray-500 mt-1">
+                                                    Supplier: {item.supplier?.name || item.supplierName}
+                                                    {item.supplierCode && ` (${item.supplierCode})`}
+                                                </div>
+                                            )}
+                                            {item.warranty && <div className="text-xs text-gray-500 mt-1">Warranty: {item.warranty}</div>}
                                         </td>
                                         <td className="py-3 px-4">{item.category || '-'}</td>
                                         <td className="py-3 px-4">

@@ -20,7 +20,9 @@ router.get('/', async (req, res, next) => {
     if (search) {
       where.OR = [
         { clientName: { contains: search, mode: 'insensitive' } },
-        { invoiceNumber: { contains: search, mode: 'insensitive' } }
+        { invoiceNumber: { contains: search, mode: 'insensitive' } },
+        { paymentMethod: { contains: search, mode: 'insensitive' } },
+        { notes: { contains: search, mode: 'insensitive' } }
       ];
     }
 

@@ -70,10 +70,10 @@ const PaymentsPage = ({ navigateTo }) => {
         fetchUserSettings();
     }, []);
 
-    // Fetch all data
+    // Fetch data on mount and when search changes
     useEffect(() => {
-        fetchData();
-    }, []);
+        fetchData(true);
+    }, [debouncedPaymentSearch]);
 
     // Refresh data when page becomes visible (handles case when payments added from other pages)
     useEffect(() => {
@@ -83,7 +83,7 @@ const PaymentsPage = ({ navigateTo }) => {
                 // Debounce refresh to avoid too many calls
                 clearTimeout(refreshTimeout);
                 refreshTimeout = setTimeout(() => {
-                    fetchData();
+                    fetchData(true);
                 }, 500);
             }
         };
@@ -94,21 +94,42 @@ const PaymentsPage = ({ navigateTo }) => {
         };
     }, []);
 
-    const fetchData = async () => {
+    const [displayedPaymentsLimit, setDisplayedPaymentsLimit] = useState(20);
+    const [allPayments, setAllPayments] = useState([]); // Store all fetched payments
+    const [hasMorePayments, setHasMorePayments] = useState(false);
+    const [paymentStatusFilter, setPaymentStatusFilter] = useState('all'); // 'all', 'unpaid', 'partial', 'paid'
+
+    const fetchData = async (resetLimit = true) => {
         try {
             setLoading(true);
+            const limit = resetLimit ? 20 : 20; // Load 20 at a time
+            const page = resetLimit ? 1 : Math.floor((displayedPaymentsLimit || 20) / 20) + 1;
+            
             const [paymentsResponse, clientsResponse, documentsResponse] = await Promise.all([
-                paymentsAPI.getAll(null, 100, 1, ''), // Fetch first 100 payments
+                paymentsAPI.getAll(null, limit, page, debouncedPaymentSearch || ''), // Use search term for server-side search
                 clientsAPI.getAll('', 100, 1), // Fetch first 100 clients
                 documentsAPI.getAll('invoice', null, 100, 1, '') // Fetch first 100 invoices
             ]);
 
             // Handle paginated response format
             const paymentsData = paymentsResponse.data || paymentsResponse;
+            const pagination = paymentsResponse.pagination;
             const clientsData = clientsResponse.data || clientsResponse;
             const documentsData = documentsResponse.data || documentsResponse;
 
-            setPayments(paymentsData);
+            if (resetLimit) {
+                setAllPayments(Array.isArray(paymentsData) ? paymentsData : []);
+                setPayments(Array.isArray(paymentsData) ? paymentsData : []);
+                setDisplayedPaymentsLimit(limit);
+            } else {
+                // Append for load more
+                const newPayments = Array.isArray(paymentsData) ? paymentsData : [];
+                setAllPayments(prev => [...prev, ...newPayments]);
+                setPayments(prev => [...prev, ...newPayments]);
+                setDisplayedPaymentsLimit(prev => prev + limit);
+            }
+            
+            setHasMorePayments(pagination?.hasMore || false);
             setClients(clientsData);
             setDocuments(documentsData);
         } catch (error) {
@@ -136,7 +157,7 @@ const PaymentsPage = ({ navigateTo }) => {
         try {
             await paymentsAPI.delete(paymentId);
             setFeedback({ type: 'success', message: 'Payment deleted successfully!' });
-            await fetchData(); // Refresh data
+            await fetchData(true); // Refresh data
         } catch (error) {
             console.error('Error deleting payment:', error);
             setFeedback({ type: 'error', message: 'Failed to delete payment' });
@@ -370,7 +391,7 @@ const PaymentsPage = ({ navigateTo }) => {
             setShowAddForm(false);
             setEditingPayment(null);
 
-            await fetchData(); // Refresh data
+            await fetchData(true); // Refresh data
         } catch (error) {
             console.error('Error saving payment:', error);
             setFeedback({ type: 'error', message: 'Failed to save payment: ' + (error.message || 'Unknown error') });
@@ -424,7 +445,23 @@ const PaymentsPage = ({ navigateTo }) => {
         });
     };
 
-    // Memoized filtered payments (all matching payments, not limited)
+    // Helper to get payment status for a payment
+    const getPaymentStatus = useCallback((payment) => {
+        if (!payment.documentId) return 'unallocated'; // Payment to client account
+        
+        const doc = documents.find(d => d.id === payment.documentId);
+        if (!doc) return 'unknown';
+        
+        const totalPaid = payments
+            .filter(p => p.documentId === payment.documentId)
+            .reduce((sum, p) => sum + (p.amount || 0), 0);
+        
+        if (totalPaid >= doc.total) return 'paid';
+        if (totalPaid > 0) return 'partial';
+        return 'unpaid';
+    }, [documents, payments]);
+
+    // Memoized filtered payments with status filter
     const allFilteredPayments = useMemo(() => {
         let filtered = [...payments];
 
@@ -433,33 +470,58 @@ const PaymentsPage = ({ navigateTo }) => {
             filtered = filtered.filter(payment => payment.clientId === clientFilter);
         }
 
-        // Filter by search term if provided
-        if (debouncedPaymentSearch) {
-            const search = debouncedPaymentSearch.toLowerCase();
+        // Filter by payment status
+        if (paymentStatusFilter !== 'all') {
             filtered = filtered.filter(payment => {
-                const clientName = getClientName(payment).toLowerCase();
-                const amount = payment.amount.toString();
-                const method = (payment.paymentMethod || '').toLowerCase();
-                const notes = (payment.notes || '').toLowerCase();
-                const invoiceNumber = (payment.invoiceNumber || '').toLowerCase();
-
-                return clientName.includes(search) ||
-                       amount.includes(search) ||
-                       method.includes(search) ||
-                       notes.includes(search) ||
-                       invoiceNumber.includes(search);
+                const status = getPaymentStatus(payment);
+                if (paymentStatusFilter === 'unpaid') {
+                    return status === 'unpaid';
+                } else if (paymentStatusFilter === 'partial') {
+                    return status === 'partial';
+                } else if (paymentStatusFilter === 'paid') {
+                    return status === 'paid';
+                }
+                return true;
             });
         }
 
-        // Sort by date (newest first)
+        // Sort by date (newest first) or by payment status
         filtered.sort((a, b) => {
+            if (paymentStatusFilter === 'unpaid') {
+                // Unpaid first, then partial, then paid
+                const statusA = getPaymentStatus(a);
+                const statusB = getPaymentStatus(b);
+                const statusOrder = { 'unpaid': 0, 'partial': 1, 'paid': 2, 'unallocated': 3, 'unknown': 4 };
+                if (statusOrder[statusA] !== statusOrder[statusB]) {
+                    return statusOrder[statusA] - statusOrder[statusB];
+                }
+            } else if (paymentStatusFilter === 'partial') {
+                // Partial first
+                const statusA = getPaymentStatus(a);
+                const statusB = getPaymentStatus(b);
+                if (statusA === 'partial' && statusB !== 'partial') return -1;
+                if (statusA !== 'partial' && statusB === 'partial') return 1;
+            } else if (paymentStatusFilter === 'paid') {
+                // Last paid first (most recent paid)
+                const statusA = getPaymentStatus(a);
+                const statusB = getPaymentStatus(b);
+                if (statusA === 'paid' && statusB === 'paid') {
+                    const dateA = a.paymentDate ? new Date(a.paymentDate) : new Date(0);
+                    const dateB = b.paymentDate ? new Date(b.paymentDate) : new Date(0);
+                    return dateB - dateA; // Most recent first
+                }
+                if (statusA === 'paid' && statusB !== 'paid') return -1;
+                if (statusA !== 'paid' && statusB === 'paid') return 1;
+            }
+            
+            // Default: sort by date (newest first)
             const dateA = a.paymentDate ? new Date(a.paymentDate) : new Date(0);
             const dateB = b.paymentDate ? new Date(b.paymentDate) : new Date(0);
             return dateB - dateA;
         });
 
         return filtered;
-    }, [payments, clientFilter, debouncedPaymentSearch, clients, documents]);
+    }, [payments, clientFilter, paymentStatusFilter, getPaymentStatus, documents]);
 
     // Displayed payments (limited by displayedPaymentsLimit)
     const filteredPayments = useMemo(() => {
@@ -658,7 +720,7 @@ const PaymentsPage = ({ navigateTo }) => {
             setShowClientSettlement(false);
             setSelectedClientForSettlement(null);
 
-            await fetchData(); // Refresh data
+            await fetchData(true); // Refresh data
         } catch (error) {
             console.error('Error settling document:', error);
             setFeedback({ type: 'error', message: 'Failed to settle invoice. Please try again.' });
@@ -812,50 +874,37 @@ const PaymentsPage = ({ navigateTo }) => {
         <div className="max-w-7xl mx-auto">
             <style>{`
                 @media print {
-                    /* Hide everything by default */
-                    body * {
-                        visibility: hidden;
+                    /* Hide everything except print area */
+                    body > *:not(.print-area-container) {
+                        display: none !important;
                     }
-                    /* Show only the print area */
-                    .print-area, .print-area * {
-                        visibility: visible;
+                    .print-area-container {
+                        display: block !important;
+                        position: relative !important;
                     }
                     .print-area {
-                        position: fixed;
-                        left: 0;
-                        top: 0;
-                        width: 100%;
-                        height: 100%;
-                        margin: 0;
-                        padding: 0;
+                        position: relative !important;
+                        left: auto !important;
+                        top: auto !important;
+                        width: 100% !important;
+                        max-width: 794px !important;
+                        margin: 0 auto !important;
+                        padding: 20px !important;
+                        background: white !important;
                         page-break-after: avoid;
                         page-break-inside: avoid;
-                        background: white;
                     }
-                    /* Hide all non-print elements */
-                    .no-print,
-                    .no-print *,
-                    header,
-                    nav,
-                    footer,
+                    /* Hide modal overlay and buttons */
+                    .fixed,
                     button,
                     .bg-black,
-                    .bg-opacity-50 {
+                    .bg-opacity-50,
+                    .no-print {
                         display: none !important;
-                        visibility: hidden !important;
-                    }
-                    /* Ensure modal overlay doesn't print */
-                    .fixed {
-                        position: static !important;
                     }
                     @page {
-                        margin: 0.5cm;
+                        margin: 1cm;
                         size: A4;
-                    }
-                    body {
-                        margin: 0;
-                        padding: 0;
-                        background: white;
                     }
                 }
             `}</style>
@@ -885,6 +934,17 @@ const PaymentsPage = ({ navigateTo }) => {
                             {clients.map(client => (
                                 <option key={client.id} value={client.id}>{client.name}</option>
                             ))}
+                        </select>
+                        <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Payment Status:</label>
+                        <select
+                            value={paymentStatusFilter}
+                            onChange={(e) => setPaymentStatusFilter(e.target.value)}
+                            className="w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        >
+                            <option value="all">All Payments</option>
+                            <option value="unpaid">Unpaid Invoices</option>
+                            <option value="partial">Partially Paid</option>
+                            <option value="paid">Fully Paid (Last Paid First)</option>
                         </select>
                     </div>
                     <div className="flex flex-wrap gap-2 w-full sm:w-auto">
@@ -1473,13 +1533,24 @@ const PaymentsPage = ({ navigateTo }) => {
                 </div>
 
                 {/* Load More Button */}
-                {filteredPayments.length < allFilteredPayments.length && (
+                {hasMorePayments && !debouncedPaymentSearch && (
                     <div className="px-4 sm:px-6 py-4 border-t border-gray-200 text-center">
                         <button
-                            onClick={() => setDisplayedPaymentsLimit(prev => prev + 50)}
+                            onClick={() => fetchData(false)}
+                            disabled={loading}
+                            className="w-full sm:w-auto px-6 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm sm:text-base disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {loading ? 'Loading...' : 'Load More Payments'}
+                        </button>
+                    </div>
+                )}
+                {!hasMorePayments && filteredPayments.length < allFilteredPayments.length && (
+                    <div className="px-4 sm:px-6 py-4 border-t border-gray-200 text-center">
+                        <button
+                            onClick={() => setDisplayedPaymentsLimit(prev => prev + 20)}
                             className="w-full sm:w-auto px-6 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm sm:text-base"
                         >
-                            Load More Payments ({allFilteredPayments.length - filteredPayments.length} remaining)
+                            Show More ({allFilteredPayments.length - filteredPayments.length} remaining)
                         </button>
                     </div>
                 )}
@@ -1512,7 +1583,7 @@ const PaymentsPage = ({ navigateTo }) => {
                             </div>
                         </div>
 
-                        <div className="p-6 overflow-y-auto flex-1">
+                        <div className="p-6 overflow-y-auto flex-1 print-area-container">
                             <div ref={receiptPrintRef} className="print-area bg-white p-6 rounded-lg" style={{ maxWidth: '794px', margin: '0 auto' }}>
                                 {/* Company Info */}
                                 <div className="text-center mb-6 border-b pb-4">
