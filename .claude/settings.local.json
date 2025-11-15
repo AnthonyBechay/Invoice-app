@@ -5,7 +5,9 @@
       "Bash(npm run build:*)",
       "Bash(pnpm install:*)",
       "Bash(cat:*)",
-      "Bash(npx prisma migrate:*)"
+      "Bash(npx prisma migrate:*)",
+      "Bash(npm install:*)",
+      "Bash(npm uninstall:*)"
     ],
     "deny": [],
     "ask": []

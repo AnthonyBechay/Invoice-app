@@ -1,8 +1,8 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { settingsAPI, documentsAPI } from '../services/api';
 import { COMPANY_INFO } from '../config';
-import html2canvas from 'html2canvas';
-import { jsPDF } from 'jspdf';
+import { pdf } from '@react-pdf/renderer';
+import DocumentPDF from './DocumentPDF';
 
 const ViewDocumentPage = ({ documentToView, navigateTo, previousPage }) => {
     const printRef = useRef();
@@ -83,251 +83,48 @@ const ViewDocumentPage = ({ documentToView, navigateTo, previousPage }) => {
     }, []);
 
     const handleShare = async (e) => {
-        // Check if iOS and in standalone mode (Add to Home Screen)
-        const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-        const isStandalone = window.navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+        try {
+            setIsGeneratingPDF(true);
 
-        if (isIOS && isStandalone && navigator.share && printRef.current) {
-            try {
-                setIsGeneratingPDF(true);
+            // Get the document info for filename
+            const { type, documentNumber, clientName } = fullDocument;
+            const filename = `${type}-${documentNumber}-${clientName}.pdf`;
 
-                // Get the document title for filename
-                const { type, documentNumber, clientName } = documentToView;
-                const filename = `${type}-${documentNumber}-${clientName}.pdf`;
+            // Generate PDF using react-pdf
+            const blob = await pdf(
+                <DocumentPDF document={fullDocument} userSettings={userSettings} />
+            ).toBlob();
 
-                console.log('Capturing canvas...');
-                // A4 dimensions in pixels at 96 DPI (standard screen resolution)
-                // A4: 210mm x 297mm = 8.27" x 11.69" = 794px x 1123px at 96 DPI
-                const a4WidthPx = 794; // A4 width in pixels (210mm = 794px at 96 DPI)
+            // Create a File object for sharing
+            const file = new File([blob], filename, { type: 'application/pdf' });
 
-                const element = printRef.current;
-
-                // Store original styles
-                const originalWidth = element.style.width;
-                const originalMaxWidth = element.style.maxWidth;
-                const originalMargin = element.style.margin;
-
-                // Set fixed A4 width for consistent capture (matches browser print)
-                element.style.width = a4WidthPx + 'px';
-                element.style.maxWidth = a4WidthPx + 'px';
-                element.style.margin = '0';
-                element.style.padding = '32px'; // 8*4 = 32px padding
-
-                // Force layout recalculation
-                element.offsetHeight; // Trigger reflow
-
-                // Wait for logo image to load if present
-                const logoImg = element.querySelector('img');
-                if (logoImg && logoImg.src) {
-                    await new Promise((resolve, reject) => {
-                        if (logoImg.complete) {
-                            resolve();
-                        } else {
-                            logoImg.onload = resolve;
-                            logoImg.onerror = resolve; // Continue even if logo fails to load
-                            setTimeout(resolve, 500); // Timeout after 500ms
-                        }
-                    });
-                }
-
-                // Wait for layout to update
-                await new Promise(resolve => setTimeout(resolve, 300));
-
-                // Get the actual rendered dimensions
-                const elementWidth = element.offsetWidth || a4WidthPx;
-                const elementHeight = element.scrollHeight || element.offsetHeight;
-
-                console.log('Element dimensions:', elementWidth, 'x', elementHeight);
-
-                // Capture the print area as canvas - use A4 width for consistency
-                const canvas = await html2canvas(element, {
-                    scale: 2, // Higher scale for better quality
-                    useCORS: true,
-                    logging: false,
-                    backgroundColor: '#ffffff',
-                    width: elementWidth,
-                    height: elementHeight,
-                    windowWidth: elementWidth,
-                    windowHeight: elementHeight,
-                    removeContainer: false,
-                    allowTaint: true,
-                    imageTimeout: 15000,
-                    onclone: (clonedDoc) => {
-                        // Ensure the cloned element maintains A4 width and proper styling
-                        const clonedElement = clonedDoc.querySelector('.print-area');
-                        if (clonedElement) {
-                            clonedElement.style.width = elementWidth + 'px';
-                            clonedElement.style.maxWidth = elementWidth + 'px';
-                            clonedElement.style.margin = '0';
-                            clonedElement.style.padding = '32px';
-                            clonedElement.style.boxSizing = 'border-box';
-
-                            // Ensure header layout is horizontal with logo on left
-                            const header = clonedElement.querySelector('header');
-                            if (header) {
-                                header.style.display = 'flex';
-                                header.style.flexDirection = 'row';
-                                header.style.justifyContent = 'space-between';
-                                header.style.alignItems = 'flex-start';
-                            }
-
-                            // Ensure logo images load
-                            const images = clonedElement.querySelectorAll('img');
-                            images.forEach(img => {
-                                if (img.src && !img.complete) {
-                                    // Force load
-                                    const src = img.src;
-                                    img.src = '';
-                                    img.src = src;
-                                }
-                            });
-
-                            // Ensure grid layout is 2 columns for details section
-                            const detailsSection = clonedElement.querySelector('section.grid');
-                            if (detailsSection) {
-                                detailsSection.style.gridTemplateColumns = '1fr 1fr';
-                                detailsSection.style.display = 'grid';
-                            }
-                        }
-                    }
+            // Try to share using Web Share API (works on mobile)
+            if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                    title: `${type} ${documentNumber}`,
+                    text: `${type} ${documentNumber} for ${clientName}`,
+                    files: [file]
                 });
-
-                // Restore original styles
-                element.style.width = originalWidth;
-                element.style.maxWidth = originalMaxWidth;
-                element.style.margin = originalMargin;
-
-                console.log('Canvas captured:', canvas.width, 'x', canvas.height);
-
-                // Convert canvas to image data
-                const imgData = canvas.toDataURL('image/png', 1.0);
-                console.log('Image data generated, length:', imgData.length);
-
-                // A4 dimensions in mm
-                const a4Width = 210; // A4 width in mm
-                const a4Height = 297; // A4 height in mm
-
-                // Calculate the scale factor: canvas pixels to mm
-                // We want the image to fill the full A4 page width
-                const pixelsPerMm = canvas.width / a4Width;
-                const imgWidthMm = a4Width; // Full A4 width
-                const imgHeightMm = canvas.height / pixelsPerMm; // Maintain aspect ratio
-
-                console.log('PDF dimensions: A4', a4Width, 'x', a4Height, 'mm');
-                console.log('Image dimensions:', imgWidthMm, 'x', imgHeightMm, 'mm');
-
-                // Create PDF instance - use standard A4 format
-                const pdf = new jsPDF({
-                    orientation: 'portrait',
-                    unit: 'mm',
-                    format: 'a4'
-                });
-
-                console.log('Adding image to PDF...');
-                // Add image to PDF - fill full width (A4 format)
-                // For content taller than A4, add multiple pages (only if actually needed)
-                const pageHeight = a4Height;
-
-                if (imgHeightMm <= pageHeight) {
-                    // Single page - add image at top
-                    pdf.addImage(imgData, 'PNG', 0, 0, imgWidthMm, imgHeightMm, undefined, 'FAST');
-                } else {
-                    // Multiple pages needed - split image across pages
-                    const sourceHeight = canvas.height;
-                    const sourceWidth = canvas.width;
-                    let yOffset = 0;
-
-                    while (yOffset < imgHeightMm) {
-                        if (yOffset > 0) {
-                            pdf.addPage();
-                        }
-
-                        const remainingHeight = imgHeightMm - yOffset;
-                        const heightThisPage = Math.min(pageHeight, remainingHeight);
-
-                        // Only proceed if we actually have content for this page
-                        if (heightThisPage <= 0) break;
-
-                        // Calculate source canvas region for this page
-                        const sourceY = (yOffset / imgHeightMm) * sourceHeight;
-                        const sourceHeightThisPage = Math.ceil((heightThisPage / imgHeightMm) * sourceHeight);
-
-                        // Ensure we don't exceed source canvas bounds
-                        if (sourceY >= sourceHeight) break;
-
-                        // Create temporary canvas for this page slice
-                        const pageCanvas = document.createElement('canvas');
-                        pageCanvas.width = sourceWidth;
-                        pageCanvas.height = Math.min(sourceHeightThisPage, sourceHeight - sourceY);
-                        const ctx = pageCanvas.getContext('2d');
-                        ctx.drawImage(canvas, 0, sourceY, sourceWidth, Math.min(sourceHeightThisPage, sourceHeight - sourceY), 0, 0, sourceWidth, Math.min(sourceHeightThisPage, sourceHeight - sourceY));
-
-                        const pageImgData = pageCanvas.toDataURL('image/png', 1.0);
-                        pdf.addImage(pageImgData, 'PNG', 0, 0, imgWidthMm, heightThisPage, undefined, 'FAST');
-
-                        yOffset += heightThisPage;
-
-                        // Prevent infinite loop
-                        if (yOffset >= imgHeightMm) break;
-                    }
-                }
-
-                console.log('Generating PDF blob...');
-                // Generate PDF blob
-                const pdfBlob = pdf.output('blob');
-                console.log('PDF blob generated, size:', pdfBlob.size);
-
-                // Create a File object for sharing
-                const file = new File([pdfBlob], filename, { type: 'application/pdf' });
-
-                console.log('Sharing PDF file...');
-                // Share the PDF file
-                if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-                    await navigator.share({
-                        title: `${type} ${documentNumber}`,
-                        text: `${type} ${documentNumber} for ${clientName}`,
-                        files: [file]
-                    });
-                    console.log('PDF shared successfully');
-                } else {
-                    console.log('Share API not available, downloading instead...');
-                    // Fallback: download the PDF
-                    const url = URL.createObjectURL(pdfBlob);
-                    const link = document.createElement('a');
-                    link.href = url;
-                    link.download = filename;
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    URL.revokeObjectURL(url);
-                    alert('PDF generated! Check your downloads folder.');
-                }
-            } catch (error) {
-                // User cancelled or share failed
-                if (error.name !== 'AbortError') {
-                    console.error('Share error details:', error);
-                    console.error('Error stack:', error.stack);
-                    console.error('Error message:', error.message);
-
-                    // Show user-friendly error message
-                    let errorMessage = 'Failed to generate PDF. ';
-                    if (error.message.includes('canvas') || error.name === 'SecurityError') {
-                        errorMessage += 'Could not capture document image. Please ensure the document is fully loaded.';
-                    } else if (error.message.includes('Share') || error.name === 'AbortError') {
-                        // User cancelled - silently fail
-                        return;
-                    } else {
-                        errorMessage += error.message || 'Unknown error occurred. Please try again.';
-                    }
-
-                    alert(errorMessage);
-                }
-            } finally {
-                setIsGeneratingPDF(false);
+            } else {
+                // Fallback: download the PDF
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+                alert('PDF downloaded! Check your downloads folder.');
             }
-        } else {
-            // For non-iOS or if Share API not available, just use regular print
-            handlePrint();
+        } catch (error) {
+            // User cancelled or share failed
+            if (error.name !== 'AbortError') {
+                console.error('PDF generation error:', error);
+                alert('Failed to generate PDF. Please try again.');
+            }
+        } finally {
+            setIsGeneratingPDF(false);
         }
     };
 
