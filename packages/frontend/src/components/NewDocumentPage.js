@@ -436,8 +436,8 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
                     <table className="min-w-full">
                         <thead className="bg-gray-100">
                             <tr>
-                                <th className="py-2 px-2 sm:px-4 text-left text-xs sm:text-sm font-semibold text-gray-600">Item/Part #</th>
                                 <th className="py-2 px-2 sm:px-4 text-left text-xs sm:text-sm font-semibold text-gray-600">Description</th>
+                                <th className="py-2 px-2 sm:px-4 text-left text-xs sm:text-sm font-semibold text-gray-600">Item/Part #</th>
                                 <th className="py-2 px-2 sm:px-4 text-center text-xs sm:text-sm font-semibold text-gray-600">Qty</th>
                                 <th className="py-2 px-2 sm:px-4 text-right text-xs sm:text-sm font-semibold text-gray-500 buying-price-col">
                                     <div className="flex items-center justify-end gap-1">
@@ -460,10 +460,6 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
                         <tbody>
                             {lineItems.map((item, index) => (
                                 <tr key={index} className="border-b hover:bg-gray-50">
-                                    <td className="py-2 px-2 sm:px-4 text-xs sm:text-sm">
-                                        <div className="font-medium">{item.partNumber || '-'}</div>
-                                        {item.sku && <div className="text-xs text-gray-500">SKU: {item.sku}</div>}
-                                    </td>
                                     <td className="py-2 px-2 sm:px-4">
                                         <div className="font-medium text-xs sm:text-sm">{item.name}</div>
                                         {item.description && (
@@ -477,6 +473,10 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
                                                 {item.specifications}
                                             </div>
                                         )}
+                                    </td>
+                                    <td className="py-2 px-2 sm:px-4 text-xs sm:text-sm">
+                                        <div className="font-medium">{item.partNumber || '-'}</div>
+                                        {item.sku && <div className="text-xs text-gray-500">SKU: {item.sku}</div>}
                                     </td>
                                     <td className="py-2 px-2 sm:px-4 text-center">
                                         <div className="flex flex-col items-center gap-1">

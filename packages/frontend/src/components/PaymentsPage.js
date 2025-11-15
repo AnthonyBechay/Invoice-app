@@ -69,39 +69,6 @@ const PaymentsPage = ({ navigateTo }) => {
         fetchUserSettings();
     }, []);
 
-    // Fetch data on mount and when search changes
-    useEffect(() => {
-        let isMounted = true;
-        const loadData = async () => {
-            if (isMounted) {
-                await fetchData(true);
-            }
-        };
-        loadData();
-        return () => {
-            isMounted = false;
-        };
-    }, [debouncedPaymentSearch, fetchData]); // Include fetchData in dependencies since it's memoized
-
-    // Refresh data when page becomes visible (handles case when payments added from other pages)
-    useEffect(() => {
-        let refreshTimeout;
-        const handleVisibilityChange = () => {
-            if (!document.hidden) {
-                // Debounce refresh to avoid too many calls
-                clearTimeout(refreshTimeout);
-                refreshTimeout = setTimeout(() => {
-                    fetchData(true);
-                }, 500);
-            }
-        };
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-        return () => {
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
-            clearTimeout(refreshTimeout);
-        };
-    }, [fetchData]); // Include fetchData since it's memoized
-
     const [displayedPaymentsLimit, setDisplayedPaymentsLimit] = useState(20);
     const [allPayments, setAllPayments] = useState([]); // Store all fetched payments
     const [hasMorePayments, setHasMorePayments] = useState(false);
@@ -116,6 +83,7 @@ const PaymentsPage = ({ navigateTo }) => {
     }, [displayedPaymentsLimit]);
 
     // Memoize fetchData to prevent infinite loops - only depends on debouncedPaymentSearch
+    // MUST be defined before useEffects that use it
     const fetchData = useCallback(async (resetLimit = true) => {
         try {
             setLoading(true);
@@ -162,6 +130,39 @@ const PaymentsPage = ({ navigateTo }) => {
             setLoading(false);
         }
     }, [debouncedPaymentSearch]); // Only depend on debouncedPaymentSearch to prevent infinite loops
+
+    // Fetch data on mount and when search changes
+    useEffect(() => {
+        let isMounted = true;
+        const loadData = async () => {
+            if (isMounted) {
+                await fetchData(true);
+            }
+        };
+        loadData();
+        return () => {
+            isMounted = false;
+        };
+    }, [debouncedPaymentSearch, fetchData]); // Include fetchData in dependencies since it's memoized
+
+    // Refresh data when page becomes visible (handles case when payments added from other pages)
+    useEffect(() => {
+        let refreshTimeout;
+        const handleVisibilityChange = () => {
+            if (!document.hidden) {
+                // Debounce refresh to avoid too many calls
+                clearTimeout(refreshTimeout);
+                refreshTimeout = setTimeout(() => {
+                    fetchData(true);
+                }, 500);
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            clearTimeout(refreshTimeout);
+        };
+    }, [fetchData]); // Include fetchData since it's memoized
 
     const [deletingPaymentIds, setDeletingPaymentIds] = useState(new Set());
 

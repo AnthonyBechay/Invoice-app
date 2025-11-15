@@ -1057,6 +1057,19 @@ const StockPage = () => {
                         </table>
                     </div>
                 )}
+                
+                {/* Load More Button */}
+                {!loading && hasMoreItems && (
+                    <div className="p-4 text-center border-t">
+                        <button
+                            onClick={() => fetchItems(debouncedSearchTerm, false)}
+                            disabled={loading}
+                            className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {loading ? 'Loading...' : 'Load More Items'}
+                        </button>
+                    </div>
+                )}
             </div>
         </div>
     );

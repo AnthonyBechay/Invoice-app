@@ -552,8 +552,8 @@ const ViewDocumentPage = ({ documentToView, navigateTo, previousPage }) => {
                     <table className="w-full text-xs min-w-[600px]">
                         <thead className="bg-gray-100">
                             <tr>
-                                <th className="py-1 px-2 text-left text-xs font-semibold text-gray-600">Item/Part #</th>
                                 <th className="py-1 px-2 text-left text-xs font-semibold text-gray-600">Description</th>
+                                <th className="py-1 px-2 text-left text-xs font-semibold text-gray-600">Item/Part #</th>
                                 <th className="py-1 px-2 text-center text-xs font-semibold text-gray-600">Qty</th>
                                 <th className="py-1 px-2 text-right text-xs font-semibold text-gray-600">Unit Price</th>
                                 <th className="py-1 px-2 text-right text-xs font-semibold text-gray-600">Total</th>
@@ -587,14 +587,14 @@ const ViewDocumentPage = ({ documentToView, navigateTo, previousPage }) => {
                                 return (
                                     <tr key={index} className="border-b">
                                         <td className="py-1 px-2 text-xs">
-                                            <div className="font-medium">{stock?.partNumber || item.partNumber || '-'}</div>
-                                            {stock?.sku && <div className="text-gray-500 text-xs">SKU: {stock.sku}</div>}
-                                        </td>
-                                        <td className="py-1 px-2 text-xs">
                                             <div className="font-medium">{item.name || ''}</div>
                                             {detailsText && (
                                                 <div className="text-gray-600 text-xs mt-0.5">{detailsText}</div>
                                             )}
+                                        </td>
+                                        <td className="py-1 px-2 text-xs">
+                                            <div className="font-medium">{stock?.partNumber || item.partNumber || '-'}</div>
+                                            {stock?.sku && <div className="text-gray-500 text-xs">SKU: {stock.sku}</div>}
                                         </td>
                                         <td className="py-1 px-2 text-center text-xs">{item.quantity || 0}</td>
                                         <td className="py-1 px-2 text-right text-xs">${(item.unitPrice || 0).toFixed(2)}</td>
