@@ -837,43 +837,20 @@ const PaymentsPage = ({ navigateTo }) => {
         <div className="max-w-7xl mx-auto">
             <style>{`
                 @media print {
-                    /* Hide everything except print area */
                     body * {
                         visibility: hidden;
                     }
-                    .print-area-container,
-                    .print-area-container * {
+                    .print-area, .print-area * {
                         visibility: visible;
                     }
-                    .print-area-container {
+                    .print-area {
                         position: absolute;
                         left: 0;
                         top: 0;
                         width: 100%;
                     }
-                    .print-area {
-                        position: relative !important;
-                        left: auto !important;
-                        top: auto !important;
-                        width: 100% !important;
-                        max-width: 794px !important;
-                        margin: 0 auto !important;
-                        padding: 20px !important;
-                        background: white !important;
-                        page-break-after: avoid;
-                        page-break-inside: avoid;
-                    }
-                    /* Hide modal overlay and buttons */
-                    .fixed,
-                    button,
-                    .bg-black,
-                    .bg-opacity-50,
                     .no-print {
-                        display: none !important;
-                    }
-                    @page {
-                        margin: 1cm;
-                        size: A4;
+                        display: none;
                     }
                 }
             `}</style>
@@ -1507,9 +1484,9 @@ const PaymentsPage = ({ navigateTo }) => {
 
             {/* Payment Receipt Modal */}
             {showPaymentReceipt && selectedPaymentForView && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 no-print">
                     <div className="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-                        <div className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-4">
+                        <div className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-4 no-print">
                             <div className="flex justify-between items-center">
                                 <div>
                                     <h2 className="text-2xl font-bold">Payment Receipt</h2>
@@ -1531,7 +1508,7 @@ const PaymentsPage = ({ navigateTo }) => {
                             </div>
                         </div>
 
-                        <div className="p-6 overflow-y-auto flex-1 print-area-container">
+                        <div className="p-6 overflow-y-auto flex-1">
                             <div ref={receiptPrintRef} className="print-area bg-white p-6 rounded-lg" style={{ maxWidth: '794px', margin: '0 auto' }}>
                                 {/* Company Info */}
                                 <div className="text-center mb-6 border-b pb-4">
@@ -1607,19 +1584,19 @@ const PaymentsPage = ({ navigateTo }) => {
                             </div>
                         </div>
 
-                        <div className="bg-gray-50 px-6 py-4 flex justify-end space-x-3 border-t">
+                        <div className="bg-gray-50 px-6 py-4 flex justify-end space-x-3 border-t no-print">
                             <button
                                 onClick={() => {
                                     setShowPaymentReceipt(false);
                                     setSelectedPaymentForView(null);
                                 }}
-                                className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors font-medium"
+                                className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors font-medium no-print"
                             >
                                 Close
                             </button>
                             <button
                                 onClick={() => window.print()}
-                                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-medium shadow-md"
+                                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-medium shadow-md no-print"
                             >
                                 Print
                             </button>
@@ -1640,7 +1617,7 @@ const PaymentsPage = ({ navigateTo }) => {
                                             }
                                         }
                                     }}
-                                    className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-all font-medium shadow-md"
+                                    className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-all font-medium shadow-md no-print"
                                 >
                                     View {documents.find(d => d.id === selectedPaymentForView.documentId)?.type === 'INVOICE' ? 'Invoice' : 'Proforma'}
                                 </button>
