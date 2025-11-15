@@ -223,8 +223,31 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
         };
     }, []);
 
+    // Helper function to format all stock item fields with nice separator
+    const formatStockItemDetails = (item) => {
+        const fields = [];
+        if (item.brand) fields.push(`Brand: ${item.brand}`);
+        if (item.model) fields.push(`Model: ${item.model}`);
+        if (item.category) fields.push(`Category: ${item.category}`);
+        if (item.partNumber) fields.push(`Part#: ${item.partNumber}`);
+        if (item.sku) fields.push(`SKU: ${item.sku}`);
+        if (item.specifications) fields.push(`Specs: ${item.specifications}`);
+        if (item.voltage) fields.push(`Voltage: ${item.voltage}`);
+        if (item.power) fields.push(`Power: ${item.power}`);
+        if (item.material) fields.push(`Material: ${item.material}`);
+        if (item.size) fields.push(`Size: ${item.size}`);
+        if (item.weight) fields.push(`Weight: ${item.weight}`);
+        if (item.color) fields.push(`Color: ${item.color}`);
+        if (item.supplier?.name || item.supplierName) fields.push(`Supplier: ${item.supplier?.name || item.supplierName}`);
+        if (item.supplierCode) fields.push(`Supplier Code: ${item.supplierCode}`);
+        if (item.warranty) fields.push(`Warranty: ${item.warranty}`);
+        if (item.unit) fields.push(`Unit: ${item.unit}`);
+        return fields.join(' • ');
+    };
+
     const handleAddItemToList = (item) => {
         if (item) {
+            const formattedDescription = formatStockItemDetails(item);
             setLineItems([...lineItems, {
                 ...item,
                 id: item.id, // Stock item ID - used as stockId when saving
@@ -232,7 +255,8 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
                 itemId: item.id, // For backward compatibility
                 quantity: 1,
                 unitPrice: item.sellingPrice || 0,
-                unit: item.unit || ''  // Include unit from stock item
+                unit: item.unit || '',  // Include unit from stock item
+                description: formattedDescription || item.description || ''  // Concatenate all fields
             }]);
             setItemSearch('');
             setSelectedStockItem('');
@@ -441,12 +465,17 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
                                     </td>
                                     <td className="py-2 px-2 sm:px-4">
                                         <div className="font-medium text-xs sm:text-sm">{item.name}</div>
-                                        <div className="text-xs text-gray-600">
-                                            {item.brand && `${item.brand}`}
-                                            {item.model && ` ${item.model}`}
-                                            {(item.brand || item.model) && item.specifications && ' - '}
-                                            {item.specifications}
-                                        </div>
+                                        {item.description && (
+                                            <div className="text-xs text-gray-600 mt-1">{item.description}</div>
+                                        )}
+                                        {!item.description && (
+                                            <div className="text-xs text-gray-600">
+                                                {item.brand && `${item.brand}`}
+                                                {item.model && ` ${item.model}`}
+                                                {(item.brand || item.model) && item.specifications && ' - '}
+                                                {item.specifications}
+                                            </div>
+                                        )}
                                     </td>
                                     <td className="py-2 px-2 sm:px-4 text-center">
                                         <div className="flex flex-col items-center gap-1">

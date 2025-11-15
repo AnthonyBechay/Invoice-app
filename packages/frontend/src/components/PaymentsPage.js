@@ -5,7 +5,7 @@ import { TableSkeleton } from './LoadingSkeleton';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 
-const PaymentsPage = () => {
+const PaymentsPage = ({ navigateTo }) => {
     const [payments, setPayments] = useState([]);
     const [clients, setClients] = useState([]);
     const [documents, setDocuments] = useState([]);
@@ -424,8 +424,8 @@ const PaymentsPage = () => {
         });
     };
 
-    // Memoized filtered payments
-    const filteredPayments = useMemo(() => {
+    // Memoized filtered payments (all matching payments, not limited)
+    const allFilteredPayments = useMemo(() => {
         let filtered = [...payments];
 
         // Filter by client if selected
@@ -458,8 +458,13 @@ const PaymentsPage = () => {
             return dateB - dateA;
         });
 
-        return filtered.slice(0, displayedPaymentsLimit);
-    }, [payments, clientFilter, debouncedPaymentSearch, displayedPaymentsLimit, clients, documents]);
+        return filtered;
+    }, [payments, clientFilter, debouncedPaymentSearch, clients, documents]);
+
+    // Displayed payments (limited by displayedPaymentsLimit)
+    const filteredPayments = useMemo(() => {
+        return allFilteredPayments.slice(0, displayedPaymentsLimit);
+    }, [allFilteredPayments, displayedPaymentsLimit]);
 
     // Memoized client payments lookup
     const getClientPayments = useCallback((clientId) => {
@@ -805,6 +810,25 @@ const PaymentsPage = () => {
 
     return (
         <div className="max-w-7xl mx-auto">
+            <style>{`
+                @media print {
+                    body * {
+                        visibility: hidden;
+                    }
+                    .print-area, .print-area * {
+                        visibility: visible;
+                    }
+                    .print-area {
+                        position: absolute;
+                        left: 0;
+                        top: 0;
+                        width: 100%;
+                    }
+                    .no-print {
+                        display: none !important;
+                    }
+                }
+            `}</style>
             <div className="mb-6">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Payments</h1>
@@ -1419,13 +1443,13 @@ const PaymentsPage = () => {
                 </div>
 
                 {/* Load More Button */}
-                {!debouncedPaymentSearch && filteredPayments.length < payments.length && (
+                {filteredPayments.length < allFilteredPayments.length && (
                     <div className="px-4 sm:px-6 py-4 border-t border-gray-200 text-center">
                         <button
                             onClick={() => setDisplayedPaymentsLimit(prev => prev + 50)}
                             className="w-full sm:w-auto px-6 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm sm:text-base"
                         >
-                            Load More Payments ({payments.length - filteredPayments.length} remaining)
+                            Load More Payments ({allFilteredPayments.length - filteredPayments.length} remaining)
                         </button>
                     </div>
                 )}
@@ -1545,12 +1569,40 @@ const PaymentsPage = () => {
                                 Close
                             </button>
                             <button
+                                onClick={() => window.print()}
+                                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-medium shadow-md"
+                            >
+                                Print
+                            </button>
+                            <button
                                 onClick={handleGenerateReceiptPDF}
                                 disabled={isGeneratingReceiptPDF}
                                 className="px-6 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-medium shadow-md"
                             >
-                                {isGeneratingReceiptPDF ? 'Generating PDF...' : 'Download PDF'}
+                                {isGeneratingReceiptPDF ? 'Generating PDF...' : 'Share PDF'}
                             </button>
+                            {selectedPaymentForView?.documentId && navigateTo && (
+                                <button
+                                    onClick={async () => {
+                                        const doc = documents.find(d => d.id === selectedPaymentForView.documentId);
+                                        if (doc) {
+                                            setShowPaymentReceipt(false);
+                                            setSelectedPaymentForView(null);
+                                            // Fetch full document and navigate
+                                            try {
+                                                const fullDoc = await documentsAPI.getById(doc.id);
+                                                navigateTo('viewDocument', fullDoc);
+                                            } catch (error) {
+                                                console.error('Error fetching document:', error);
+                                                navigateTo('viewDocument', doc);
+                                            }
+                                        }
+                                    }}
+                                    className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-all font-medium shadow-md"
+                                >
+                                    View {documents.find(d => d.id === selectedPaymentForView.documentId)?.type === 'INVOICE' ? 'Invoice' : 'Proforma'}
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>

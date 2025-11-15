@@ -14,13 +14,17 @@ const apiRequest = async (endpoint, options = {}, retryCount = 0) => {
   const MAX_RETRIES = 3;
   const INITIAL_RETRY_DELAY = 1000; // 1 second
 
+  // Don't send token for public endpoints (login, register)
+  const isPublicEndpoint = endpoint === '/auth/login' || endpoint === '/auth/register';
+  
   const token = getToken();
   const headers = {
     'Content-Type': 'application/json',
     ...options.headers,
   };
 
-  if (token) {
+  // Only add Authorization header if token exists AND it's not a public endpoint
+  if (token && !isPublicEndpoint) {
     headers.Authorization = `Bearer ${token}`;
   }
 
@@ -99,10 +103,17 @@ const apiRequest = async (endpoint, options = {}, retryCount = 0) => {
     if (!response.ok) {
       const errorMessage = data?.error || data?.message || `HTTP error! status: ${response.status}`;
       
-      // Handle 401 Unauthorized
+      // Handle 401 Unauthorized - clear token if it's invalid
       if (response.status === 401) {
-        removeToken();
-        throw new Error('Unauthorized: No token provided');
+        // Only remove token if it's not a public endpoint (login/register)
+        // For public endpoints, 401 means invalid credentials, not invalid token
+        if (!isPublicEndpoint) {
+          removeToken();
+          throw new Error('Session expired. Please log in again.');
+        } else {
+          // For login/register, the error message is about invalid credentials
+          throw new Error(errorMessage);
+        }
       }
       
       throw new Error(errorMessage);
@@ -121,6 +132,8 @@ const apiRequest = async (endpoint, options = {}, retryCount = 0) => {
 // Authentication API
 export const authAPI = {
   register: async (email, password, name = '') => {
+    // Clear any existing token before register attempt to avoid conflicts
+    removeToken();
     const data = await apiRequest('/auth/register', {
       method: 'POST',
       body: JSON.stringify({ email, password, name }),
@@ -132,6 +145,8 @@ export const authAPI = {
   },
 
   login: async (email, password) => {
+    // Clear any existing token before login attempt to avoid conflicts
+    removeToken();
     const data = await apiRequest('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),

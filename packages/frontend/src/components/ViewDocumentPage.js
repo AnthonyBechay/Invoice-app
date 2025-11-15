@@ -560,18 +560,47 @@ const ViewDocumentPage = ({ documentToView, navigateTo, previousPage }) => {
                             </tr>
                         </thead>
                         <tbody>
-                            {items && Array.isArray(items) && items.length > 0 && items.map((item, index) => (
-                                <tr key={index} className="border-b">
-                                    <td className="py-1 px-2 text-xs">{item.stock?.partNumber || ''}</td>
-                                    <td className="py-1 px-2 text-xs">
-                                        <div className="font-medium">{item.name || ''}</div>
-                                        <div className="text-gray-600">{item.description || ''}</div>
-                                    </td>
-                                    <td className="py-1 px-2 text-center text-xs">{item.quantity || 0}</td>
-                                    <td className="py-1 px-2 text-right text-xs">${(item.unitPrice || 0).toFixed(2)}</td>
-                                    <td className="py-1 px-2 text-right font-medium text-xs">${((item.quantity || 0) * (item.unitPrice || 0)).toFixed(2)}</td>
-                                </tr>
-                            ))}
+                            {items && Array.isArray(items) && items.length > 0 && items.map((item, index) => {
+                                // Format all stock item details (without labels for brevity)
+                                const stockDetails = [];
+                                const stock = item.stock;
+                                if (stock) {
+                                    if (stock.brand) stockDetails.push(stock.brand);
+                                    if (stock.model) stockDetails.push(stock.model);
+                                    if (stock.category) stockDetails.push(stock.category);
+                                    if (stock.sku) stockDetails.push(`SKU: ${stock.sku}`);
+                                    if (stock.specifications) stockDetails.push(stock.specifications);
+                                    if (stock.voltage) stockDetails.push(stock.voltage);
+                                    if (stock.power) stockDetails.push(stock.power);
+                                    if (stock.material) stockDetails.push(stock.material);
+                                    if (stock.size) stockDetails.push(stock.size);
+                                    if (stock.weight) stockDetails.push(stock.weight);
+                                    if (stock.color) stockDetails.push(stock.color);
+                                    if (stock.supplier?.name || stock.supplierName) stockDetails.push(stock.supplier?.name || stock.supplierName);
+                                    if (stock.supplierCode) stockDetails.push(stock.supplierCode);
+                                    if (stock.warranty) stockDetails.push(stock.warranty);
+                                    if (stock.unit) stockDetails.push(stock.unit);
+                                }
+                                const detailsText = stockDetails.length > 0 ? stockDetails.join(' • ') : (item.description || '');
+                                
+                                return (
+                                    <tr key={index} className="border-b">
+                                        <td className="py-1 px-2 text-xs">
+                                            <div className="font-medium">{stock?.partNumber || item.partNumber || '-'}</div>
+                                            {stock?.sku && <div className="text-gray-500 text-xs">SKU: {stock.sku}</div>}
+                                        </td>
+                                        <td className="py-1 px-2 text-xs">
+                                            <div className="font-medium">{item.name || ''}</div>
+                                            {detailsText && (
+                                                <div className="text-gray-600 text-xs mt-0.5">{detailsText}</div>
+                                            )}
+                                        </td>
+                                        <td className="py-1 px-2 text-center text-xs">{item.quantity || 0}</td>
+                                        <td className="py-1 px-2 text-right text-xs">${(item.unitPrice || 0).toFixed(2)}</td>
+                                        <td className="py-1 px-2 text-right font-medium text-xs">${((item.quantity || 0) * (item.unitPrice || 0)).toFixed(2)}</td>
+                                    </tr>
+                                );
+                            })}
                             {(!items || !Array.isArray(items) || items.length === 0) && laborPrice === 0 && (!mandays || (mandays.days === 0 && mandays.people === 0)) && (
                                 <tr>
                                     <td colSpan="5" className="py-4 px-2 text-center text-gray-500 text-xs">No items</td>

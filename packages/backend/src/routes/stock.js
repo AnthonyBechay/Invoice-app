@@ -28,7 +28,15 @@ router.get('/', async (req, res, next) => {
         { sku: { contains: search, mode: 'insensitive' } },
         { specifications: { contains: search, mode: 'insensitive' } },
         { supplierName: { contains: search, mode: 'insensitive' } },
-        { notes: { contains: search, mode: 'insensitive' } }
+        { notes: { contains: search, mode: 'insensitive' } },
+        { color: { contains: search, mode: 'insensitive' } },
+        { voltage: { contains: search, mode: 'insensitive' } },
+        { power: { contains: search, mode: 'insensitive' } },
+        { material: { contains: search, mode: 'insensitive' } },
+        { size: { contains: search, mode: 'insensitive' } },
+        { weight: { contains: search, mode: 'insensitive' } },
+        { supplierCode: { contains: search, mode: 'insensitive' } },
+        { warranty: { contains: search, mode: 'insensitive' } }
       ];
     }
 

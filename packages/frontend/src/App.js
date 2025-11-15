@@ -80,7 +80,7 @@ function AppContent() {
                             {page === 'dashboard' && <Dashboard navigateTo={navigateTo} />}
                             {page === 'proformas' && <ProformasPage navigateTo={navigateTo} />}
                             {page === 'invoices' && <InvoicesPage navigateTo={navigateTo} />}
-                            {page === 'payments' && <PaymentsPage />}
+                            {page === 'payments' && <PaymentsPage navigateTo={navigateTo} />}
                             {page === 'expenses' && <ExpensesPage />}
                             {page === 'stock' && <StockPage />}
                             {page === 'clients' && <ClientsPage />}

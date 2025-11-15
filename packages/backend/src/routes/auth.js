@@ -22,22 +22,26 @@ router.post('/register', async (req, res, next) => {
       return res.status(400).json({ error: 'Password must be at least 6 characters' });
     }
 
-    // Check if user already exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email }
-    });
-
-    if (existingUser) {
-      return res.status(400).json({ error: 'User with this email already exists' });
+    // Check if user already exists (case-insensitive)
+    // Normalize email to lowercase for comparison
+    const normalizedEmail = email.toLowerCase().trim();
+    
+    // Use raw query for case-insensitive email lookup (PostgreSQL ILIKE)
+    const existingUsers = await prisma.$queryRaw`
+      SELECT * FROM "User" WHERE LOWER(email) = LOWER(${normalizedEmail}) LIMIT 1
+    `;
+    
+    if (existingUsers && existingUsers.length > 0) {
+      return res.status(400).json({ error: 'An account with this email already exists. Please use a different email or try signing in.' });
     }
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create user
+    // Create user (store email in lowercase for consistency)
     const user = await prisma.user.create({
       data: {
-        email,
+        email: normalizedEmail,
         password: hashedPassword,
         name: name || ''
       },
@@ -77,20 +81,26 @@ router.post('/login', async (req, res, next) => {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
-    // Find user
-    const user = await prisma.user.findUnique({
-      where: { email }
-    });
+    // Find user (case-insensitive email lookup)
+    // Normalize email to lowercase for comparison
+    const normalizedEmail = email.toLowerCase().trim();
+    
+    // Use raw query for case-insensitive email lookup (PostgreSQL ILIKE)
+    const users = await prisma.$queryRaw`
+      SELECT * FROM "User" WHERE LOWER(email) = LOWER(${normalizedEmail}) LIMIT 1
+    `;
+    
+    const user = users && users.length > 0 ? users[0] : null;
 
     if (!user) {
-      return res.status(401).json({ error: 'Invalid email or password' });
+      return res.status(401).json({ error: 'Invalid email or password. Please check your credentials and try again.' });
     }
 
     // Verify password
     const isValidPassword = await bcrypt.compare(password, user.password);
 
     if (!isValidPassword) {
-      return res.status(401).json({ error: 'Invalid email or password' });
+      return res.status(401).json({ error: 'Invalid email or password. Please check your credentials and try again.' });
     }
 
     // Generate JWT token
