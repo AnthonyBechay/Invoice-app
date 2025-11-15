@@ -226,20 +226,20 @@ const NewDocumentPage = ({ navigateTo, documentToEdit }) => {
     // Helper function to format all stock item fields with nice separator
     const formatStockItemDetails = (item) => {
         const fields = [];
-        if (item.brand) fields.push(`Brand: ${item.brand}`);
-        if (item.model) fields.push(`Model: ${item.model}`);
-        if (item.description) fields.push(`Desc: ${item.description}`);
-        if (item.category) fields.push(`Category: ${item.category}`);
+        if (item.brand) fields.push(item.brand);
+        if (item.model) fields.push(item.model);
+        if (item.description) fields.push(item.description);
+        if (item.category) fields.push(item.category);
         if (item.partNumber) fields.push(`Part#: ${item.partNumber}`);
         if (item.sku) fields.push(`SKU: ${item.sku}`);
-        if (item.specifications) fields.push(`Specs: ${item.specifications}`);
-        if (item.voltage) fields.push(`Voltage: ${item.voltage}`);
-        if (item.power) fields.push(`Power: ${item.power}`);
-        if (item.material) fields.push(`Material: ${item.material}`);
-        if (item.size) fields.push(`Size: ${item.size}`);
-        if (item.weight) fields.push(`Weight: ${item.weight}`);
-        if (item.color) fields.push(`Color: ${item.color}`);
-        if (item.supplier?.name || item.supplierName) fields.push(`Supplier: ${item.supplier?.name || item.supplierName}`);
+        if (item.specifications) fields.push(item.specifications);
+        if (item.voltage) fields.push(item.voltage);
+        if (item.power) fields.push(item.power);
+        if (item.material) fields.push(item.material);
+        if (item.size) fields.push(item.size);
+        if (item.weight) fields.push(item.weight);
+        if (item.color) fields.push(item.color);
+        if (item.supplier?.name || item.supplierName) fields.push(item.supplier?.name || item.supplierName);
         //if (item.supplierCode) fields.push(`Supplier Code: ${item.supplierCode}`);
         //if (item.warranty) fields.push(`Warranty: ${item.warranty}`);
         if (item.unit) fields.push(item.unit);

@@ -72,7 +72,6 @@ const PaymentsPage = ({ navigateTo }) => {
     const [displayedPaymentsLimit, setDisplayedPaymentsLimit] = useState(20);
     const [allPayments, setAllPayments] = useState([]); // Store all fetched payments
     const [hasMorePayments, setHasMorePayments] = useState(false);
-    const [paymentStatusFilter, setPaymentStatusFilter] = useState('all'); // 'all', 'unpaid', 'partial', 'paid'
     
     // Use ref to track current limit without causing re-renders or dependency issues
     const displayedPaymentsLimitRef = useRef(20);
@@ -145,24 +144,7 @@ const PaymentsPage = ({ navigateTo }) => {
         };
     }, [debouncedPaymentSearch, fetchData]); // Include fetchData in dependencies since it's memoized
 
-    // Refresh data when page becomes visible (handles case when payments added from other pages)
-    useEffect(() => {
-        let refreshTimeout;
-        const handleVisibilityChange = () => {
-            if (!document.hidden) {
-                // Debounce refresh to avoid too many calls
-                clearTimeout(refreshTimeout);
-                refreshTimeout = setTimeout(() => {
-                    fetchData(true);
-                }, 500);
-            }
-        };
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-        return () => {
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
-            clearTimeout(refreshTimeout);
-        };
-    }, [fetchData]); // Include fetchData since it's memoized
+    // Removed visibility change handler to prevent unnecessary API calls when minimizing/maximizing browser
 
     const [deletingPaymentIds, setDeletingPaymentIds] = useState(new Set());
 
@@ -485,7 +467,7 @@ const PaymentsPage = ({ navigateTo }) => {
         return 'unpaid';
     }, [documents, payments]);
 
-    // Memoized filtered payments with status filter
+    // Memoized filtered payments (by client only)
     const allFilteredPayments = useMemo(() => {
         let filtered = [...payments];
 
@@ -494,58 +476,15 @@ const PaymentsPage = ({ navigateTo }) => {
             filtered = filtered.filter(payment => payment.clientId === clientFilter);
         }
 
-        // Filter by payment status
-        if (paymentStatusFilter !== 'all') {
-            filtered = filtered.filter(payment => {
-                const status = getPaymentStatus(payment);
-                if (paymentStatusFilter === 'unpaid') {
-                    return status === 'unpaid';
-                } else if (paymentStatusFilter === 'partial') {
-                    return status === 'partial';
-                } else if (paymentStatusFilter === 'paid') {
-                    return status === 'paid';
-                }
-                return true;
-            });
-        }
-
-        // Sort by date (newest first) or by payment status
+        // Sort by date (newest first)
         filtered.sort((a, b) => {
-            if (paymentStatusFilter === 'unpaid') {
-                // Unpaid first, then partial, then paid
-                const statusA = getPaymentStatus(a);
-                const statusB = getPaymentStatus(b);
-                const statusOrder = { 'unpaid': 0, 'partial': 1, 'paid': 2, 'unallocated': 3, 'unknown': 4 };
-                if (statusOrder[statusA] !== statusOrder[statusB]) {
-                    return statusOrder[statusA] - statusOrder[statusB];
-                }
-            } else if (paymentStatusFilter === 'partial') {
-                // Partial first
-                const statusA = getPaymentStatus(a);
-                const statusB = getPaymentStatus(b);
-                if (statusA === 'partial' && statusB !== 'partial') return -1;
-                if (statusA !== 'partial' && statusB === 'partial') return 1;
-            } else if (paymentStatusFilter === 'paid') {
-                // Last paid first (most recent paid)
-                const statusA = getPaymentStatus(a);
-                const statusB = getPaymentStatus(b);
-                if (statusA === 'paid' && statusB === 'paid') {
-                    const dateA = a.paymentDate ? new Date(a.paymentDate) : new Date(0);
-                    const dateB = b.paymentDate ? new Date(b.paymentDate) : new Date(0);
-                    return dateB - dateA; // Most recent first
-                }
-                if (statusA === 'paid' && statusB !== 'paid') return -1;
-                if (statusA !== 'paid' && statusB === 'paid') return 1;
-            }
-            
-            // Default: sort by date (newest first)
             const dateA = a.paymentDate ? new Date(a.paymentDate) : new Date(0);
             const dateB = b.paymentDate ? new Date(b.paymentDate) : new Date(0);
             return dateB - dateA;
         });
 
         return filtered;
-    }, [payments, clientFilter, paymentStatusFilter, getPaymentStatus, documents]);
+    }, [payments, clientFilter]);
 
     // Displayed payments (limited by displayedPaymentsLimit)
     const filteredPayments = useMemo(() => {
@@ -899,12 +838,18 @@ const PaymentsPage = ({ navigateTo }) => {
             <style>{`
                 @media print {
                     /* Hide everything except print area */
-                    body > *:not(.print-area-container) {
-                        display: none !important;
+                    body * {
+                        visibility: hidden;
+                    }
+                    .print-area-container,
+                    .print-area-container * {
+                        visibility: visible;
                     }
                     .print-area-container {
-                        display: block !important;
-                        position: relative !important;
+                        position: absolute;
+                        left: 0;
+                        top: 0;
+                        width: 100%;
                     }
                     .print-area {
                         position: relative !important;
@@ -958,17 +903,6 @@ const PaymentsPage = ({ navigateTo }) => {
                             {clients.map(client => (
                                 <option key={client.id} value={client.id}>{client.name}</option>
                             ))}
-                        </select>
-                        <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Payment Status:</label>
-                        <select
-                            value={paymentStatusFilter}
-                            onChange={(e) => setPaymentStatusFilter(e.target.value)}
-                            className="w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        >
-                            <option value="all">All Payments</option>
-                            <option value="unpaid">Unpaid Invoices</option>
-                            <option value="partial">Partially Paid</option>
-                            <option value="paid">Fully Paid (Last Paid First)</option>
                         </select>
                     </div>
                     <div className="flex flex-wrap gap-2 w-full sm:w-auto">
@@ -1556,8 +1490,8 @@ const PaymentsPage = ({ navigateTo }) => {
                     </table>
                 </div>
 
-                {/* Load More Button */}
-                {hasMorePayments && !debouncedPaymentSearch && (
+                {/* Load More Button - show when more payments are available from server */}
+                {hasMorePayments && (
                     <div className="px-4 sm:px-6 py-4 border-t border-gray-200 text-center">
                         <button
                             onClick={() => fetchData(false)}
@@ -1565,16 +1499,6 @@ const PaymentsPage = ({ navigateTo }) => {
                             className="w-full sm:w-auto px-6 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm sm:text-base disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {loading ? 'Loading...' : 'Load More Payments'}
-                        </button>
-                    </div>
-                )}
-                {!hasMorePayments && filteredPayments.length < allFilteredPayments.length && (
-                    <div className="px-4 sm:px-6 py-4 border-t border-gray-200 text-center">
-                        <button
-                            onClick={() => setDisplayedPaymentsLimit(prev => prev + 20)}
-                            className="w-full sm:w-auto px-6 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm sm:text-base"
-                        >
-                            Show More ({allFilteredPayments.length - filteredPayments.length} remaining)
                         </button>
                     </div>
                 )}
