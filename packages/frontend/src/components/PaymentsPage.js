@@ -837,6 +837,10 @@ const PaymentsPage = ({ navigateTo }) => {
         <div className="max-w-7xl mx-auto">
             <style>{`
                 @media print {
+                    @page {
+                        size: A4;
+                        margin: 1cm;
+                    }
                     body * {
                         visibility: hidden;
                     }
@@ -849,6 +853,13 @@ const PaymentsPage = ({ navigateTo }) => {
                         top: 0 !important;
                         width: 100% !important;
                         display: block !important;
+                        page-break-after: avoid !important;
+                        page-break-inside: avoid !important;
+                        break-inside: avoid !important;
+                    }
+                    .print-area > * {
+                        page-break-inside: avoid !important;
+                        break-inside: avoid !important;
                     }
                     .no-print {
                         visibility: hidden !important;
