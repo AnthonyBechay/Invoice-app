@@ -693,27 +693,35 @@ const PaymentsPage = ({ navigateTo }) => {
         }
     };
 
-    // PDF generation for payment receipt
+    // PDF generation for payment receipt - optimized for single page and mobile
     const handleGenerateReceiptPDF = async () => {
         if (!selectedPaymentForView || !receiptPrintRef.current) return;
 
         try {
             setIsGeneratingReceiptPDF(true);
-            const filename = `Payment-Receipt-${selectedPaymentForView.id.substring(0, 8)}.pdf`;
+            
+            const clientName = getClientName(selectedPaymentForView);
+            const filename = `Payment-Receipt-${selectedPaymentForView.id.substring(0, 8)}-${clientName.replace(/[^a-z0-9]/gi, '_')}.pdf`;
             const element = receiptPrintRef.current;
-            const a4WidthPx = 794;
+            
+            // A4 dimensions in pixels at 96 DPI
+            const a4WidthPx = 794; // 210mm = 794px
+            const a4HeightPx = 1123; // 297mm = 1123px
 
             // Store original styles
             const originalWidth = element.style.width;
             const originalMaxWidth = element.style.maxWidth;
             const originalMargin = element.style.margin;
             const originalPadding = element.style.padding;
+            const originalBackground = element.style.background;
 
             // Set fixed A4 width for consistent capture
             element.style.width = a4WidthPx + 'px';
             element.style.maxWidth = a4WidthPx + 'px';
             element.style.margin = '0 auto';
-            element.style.padding = '32px';
+            element.style.padding = '40px';
+            element.style.background = '#ffffff';
+            element.style.boxSizing = 'border-box';
             
             // Force layout recalculation
             element.offsetHeight;
@@ -721,40 +729,57 @@ const PaymentsPage = ({ navigateTo }) => {
             // Wait for logo image to load if present
             const logoImg = element.querySelector('img');
             if (logoImg && logoImg.src) {
-                await new Promise((resolve, reject) => {
+                await new Promise((resolve) => {
                     if (logoImg.complete && logoImg.naturalHeight !== 0) {
                         resolve();
                     } else {
                         logoImg.onload = resolve;
                         logoImg.onerror = resolve; // Continue even if logo fails
-                        setTimeout(resolve, 1000); // Timeout after 1s
+                        setTimeout(resolve, 1500); // Timeout after 1.5s
                     }
                 });
             }
 
             // Wait for layout to update
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise(resolve => setTimeout(resolve, 300));
 
+            // Get actual dimensions
+            const elementWidth = element.offsetWidth || a4WidthPx;
+            const elementHeight = Math.min(element.scrollHeight, a4HeightPx * 0.9); // Limit to 90% of page height
+
+            // Capture with optimized settings for mobile
             const canvas = await html2canvas(element, {
-                scale: 2,
+                scale: window.devicePixelRatio > 1 ? 2 : 2, // Higher quality
                 useCORS: true,
                 logging: false,
                 backgroundColor: '#ffffff',
-                allowTaint: false,
+                width: elementWidth,
+                height: elementHeight,
+                windowWidth: elementWidth,
+                windowHeight: elementHeight,
+                allowTaint: true,
                 imageTimeout: 20000,
                 onclone: (clonedDoc) => {
-                    // Ensure logo loads in cloned document
                     const clonedElement = clonedDoc.querySelector('.print-area');
                     if (clonedElement) {
-                        clonedElement.style.width = a4WidthPx + 'px';
-                        clonedElement.style.maxWidth = a4WidthPx + 'px';
-                        clonedElement.style.margin = '0 auto';
-                        clonedElement.style.padding = '32px';
+                        clonedElement.style.width = elementWidth + 'px';
+                        clonedElement.style.maxWidth = elementWidth + 'px';
+                        clonedElement.style.margin = '0';
+                        clonedElement.style.padding = '40px';
+                        clonedElement.style.background = '#ffffff';
+                        clonedElement.style.boxSizing = 'border-box';
                         
-                        const clonedLogo = clonedElement.querySelector('img');
-                        if (clonedLogo && clonedLogo.src) {
-                            clonedLogo.style.display = 'block';
-                        }
+                        // Ensure all images are visible
+                        const images = clonedElement.querySelectorAll('img');
+                        images.forEach(img => {
+                            img.style.display = 'block';
+                            img.style.visibility = 'visible';
+                            if (img.src && !img.complete) {
+                                const src = img.src;
+                                img.src = '';
+                                img.src = src;
+                            }
+                        });
                     }
                 }
             });
@@ -764,64 +789,60 @@ const PaymentsPage = ({ navigateTo }) => {
             element.style.maxWidth = originalMaxWidth;
             element.style.margin = originalMargin;
             element.style.padding = originalPadding;
+            element.style.background = originalBackground;
 
+            // Convert to PDF
             const imgData = canvas.toDataURL('image/png', 1.0);
             const pdf = new jsPDF({
                 orientation: 'portrait',
                 unit: 'mm',
-                format: 'a4'
+                format: 'a4',
+                compress: true
             });
 
+            // A4 dimensions in mm
             const a4Width = 210;
             const a4Height = 297;
             const pixelsPerMm = canvas.width / a4Width;
             const imgHeightMm = canvas.height / pixelsPerMm;
 
-            // Only add one page - fit content to single page
+            // Always fit to single page - scale if needed
             if (imgHeightMm <= a4Height) {
+                // Content fits on one page
                 pdf.addImage(imgData, 'PNG', 0, 0, a4Width, imgHeightMm, undefined, 'FAST');
             } else {
-                // If content is taller than one page, scale it down to fit
+                // Content is too tall - scale down to fit one page
                 const scale = a4Height / imgHeightMm;
-                pdf.addImage(imgData, 'PNG', 0, 0, a4Width, a4Height, undefined, 'FAST');
+                const scaledWidth = a4Width * scale;
+                const scaledHeight = a4Height;
+                pdf.addImage(imgData, 'PNG', (a4Width - scaledWidth) / 2, 0, scaledWidth, scaledHeight, undefined, 'FAST');
             }
 
+            // Generate and download/share PDF
             const pdfBlob = pdf.output('blob');
             const file = new File([pdfBlob], filename, { type: 'application/pdf' });
 
+            // Try to share on mobile devices, otherwise download
             const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-            const isStandalone = window.navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+            const isAndroid = /Android/i.test(navigator.userAgent);
+            const isMobile = isIOS || isAndroid;
 
-            if (isIOS && isStandalone && navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+            if (isMobile && navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
                 try {
                     await navigator.share({
                         title: `Payment Receipt`,
-                        text: `Payment Receipt for ${getClientName(selectedPaymentForView)}`,
+                        text: `Payment Receipt for ${clientName}`,
                         files: [file]
                     });
                 } catch (shareError) {
                     if (shareError.name !== 'AbortError') {
                         // Fallback to download
-                        const url = URL.createObjectURL(pdfBlob);
-                        const link = document.createElement('a');
-                        link.href = url;
-                        link.download = filename;
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                        URL.revokeObjectURL(url);
+                        downloadPDF(pdfBlob, filename);
                     }
                 }
             } else {
                 // Download PDF
-                const url = URL.createObjectURL(pdfBlob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = filename;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                URL.revokeObjectURL(url);
+                downloadPDF(pdfBlob, filename);
             }
         } catch (error) {
             if (error.name !== 'AbortError') {
@@ -831,6 +852,18 @@ const PaymentsPage = ({ navigateTo }) => {
         } finally {
             setIsGeneratingReceiptPDF(false);
         }
+    };
+
+    // Helper function to download PDF
+    const downloadPDF = (pdfBlob, filename) => {
+        const url = URL.createObjectURL(pdfBlob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
     };
 
     return (
@@ -1618,10 +1651,11 @@ const PaymentsPage = ({ navigateTo }) => {
                                 Close
                             </button>
                             <button
-                                onClick={() => window.print()}
-                                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-medium shadow-md no-print"
+                                onClick={handleGenerateReceiptPDF}
+                                disabled={isGeneratingReceiptPDF}
+                                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-medium shadow-md no-print disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                Print
+                                {isGeneratingReceiptPDF ? 'Generating PDF...' : 'Print / Save PDF'}
                             </button>
                             {selectedPaymentForView?.documentId && navigateTo && (
                                 <button
