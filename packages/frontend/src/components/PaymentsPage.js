@@ -40,6 +40,8 @@ const PaymentsPage = ({ navigateTo }) => {
     const [userSettings, setUserSettings] = useState(null);
     const [isGeneratingReceiptPDF, setIsGeneratingReceiptPDF] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [pdfBlobUrl, setPdfBlobUrl] = useState(null);
+    const [showPdfViewer, setShowPdfViewer] = useState(false);
 
     // Handle click outside client dropdown
     useEffect(() => {
@@ -700,8 +702,6 @@ const PaymentsPage = ({ navigateTo }) => {
             setIsGeneratingReceiptPDF(true);
 
             const clientName = getClientName(selectedPaymentForView);
-            const receiptNumber = selectedPaymentForView.id.substring(0, 8).toUpperCase();
-            const filename = `Payment-Receipt-${receiptNumber}-${clientName}.pdf`;
 
             // Prepare payment data with client name
             const paymentData = {
@@ -714,45 +714,51 @@ const PaymentsPage = ({ navigateTo }) => {
                 <PaymentReceiptPDF payment={paymentData} userSettings={userSettings} />
             ).toBlob();
 
-            // Create a File object for sharing
-            const file = new File([blob], filename, { type: 'application/pdf' });
-
-            // Try to share using Web Share API (works on mobile)
-            if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-                await navigator.share({
-                    title: `Payment Receipt ${receiptNumber}`,
-                    text: `Payment Receipt for ${clientName}`,
-                    files: [file]
-                });
-            } else {
-                // Fallback: download the PDF
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = filename;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                URL.revokeObjectURL(url);
-
-                setFeedback({
-                    type: 'success',
-                    message: 'PDF downloaded successfully! Check your downloads folder.'
-                });
-                setTimeout(() => setFeedback({ type: '', message: '' }), 3000);
+            // Clean up old blob URL if exists
+            if (pdfBlobUrl) {
+                URL.revokeObjectURL(pdfBlobUrl);
             }
+
+            // Create blob URL and show viewer
+            const url = URL.createObjectURL(blob);
+            setPdfBlobUrl(url);
+            setShowPdfViewer(true);
+            setShowPaymentReceipt(false); // Close the receipt modal
+
         } catch (error) {
-            // User cancelled or share failed
-            if (error.name !== 'AbortError') {
-                console.error('PDF generation error:', error);
-                setFeedback({
-                    type: 'error',
-                    message: 'Failed to generate PDF. Please try again.'
-                });
-                setTimeout(() => setFeedback({ type: '', message: '' }), 5000);
-            }
+            console.error('PDF generation error:', error);
+            setFeedback({
+                type: 'error',
+                message: 'Failed to generate PDF. Please try again.'
+            });
+            setTimeout(() => setFeedback({ type: '', message: '' }), 5000);
         } finally {
             setIsGeneratingReceiptPDF(false);
+        }
+    };
+
+    // Download PDF from viewer
+    const handleDownloadPDF = () => {
+        if (!pdfBlobUrl || !selectedPaymentForView) return;
+
+        const clientName = getClientName(selectedPaymentForView);
+        const receiptNumber = selectedPaymentForView.id.substring(0, 8).toUpperCase();
+        const filename = `Payment-Receipt-${receiptNumber}-${clientName}.pdf`;
+
+        const link = document.createElement('a');
+        link.href = pdfBlobUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    // Close PDF viewer
+    const handleClosePdfViewer = () => {
+        setShowPdfViewer(false);
+        if (pdfBlobUrl) {
+            URL.revokeObjectURL(pdfBlobUrl);
+            setPdfBlobUrl(null);
         }
     };
 
@@ -1572,6 +1578,46 @@ const PaymentsPage = ({ navigateTo }) => {
                                     View {documents.find(d => d.id === selectedPaymentForView.documentId)?.type === 'INVOICE' ? 'Invoice' : 'Proforma'}
                                 </button>
                             )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* PDF Viewer Modal */}
+            {showPdfViewer && pdfBlobUrl && (
+                <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-2xl w-full h-full max-w-6xl max-h-[90vh] flex flex-col">
+                        {/* Header */}
+                        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-4 flex justify-between items-center rounded-t-lg">
+                            <h2 className="text-xl font-bold">Payment Receipt PDF</h2>
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={handleDownloadPDF}
+                                    className="px-4 py-2 bg-white text-blue-600 rounded-lg hover:bg-gray-100 transition-colors font-medium flex items-center gap-2"
+                                >
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    Download
+                                </button>
+                                <button
+                                    onClick={handleClosePdfViewer}
+                                    className="text-white hover:text-gray-200 transition-colors"
+                                >
+                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* PDF Viewer */}
+                        <div className="flex-1 overflow-hidden">
+                            <iframe
+                                src={pdfBlobUrl}
+                                className="w-full h-full border-0"
+                                title="Payment Receipt PDF"
+                            />
                         </div>
                     </div>
                 </div>

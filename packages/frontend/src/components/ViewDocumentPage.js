@@ -12,6 +12,8 @@ const ViewDocumentPage = ({ documentToView, navigateTo, previousPage }) => {
     const [fullDocument, setFullDocument] = useState(null);
     const [isLoadingDocument, setIsLoadingDocument] = useState(false);
     const [logoLoaded, setLogoLoaded] = useState(false);
+    const [pdfBlobUrl, setPdfBlobUrl] = useState(null);
+    const [showPdfViewer, setShowPdfViewer] = useState(false);
 
     // Fetch full document with items if not already present
     useEffect(() => {
@@ -86,45 +88,50 @@ const ViewDocumentPage = ({ documentToView, navigateTo, previousPage }) => {
         try {
             setIsGeneratingPDF(true);
 
-            // Get the document info for filename
-            const { type, documentNumber, clientName } = fullDocument;
-            const filename = `${type}-${documentNumber}-${clientName}.pdf`;
-
             // Generate PDF using react-pdf
             const blob = await pdf(
                 <DocumentPDF document={fullDocument} userSettings={userSettings} />
             ).toBlob();
 
-            // Create a File object for sharing
-            const file = new File([blob], filename, { type: 'application/pdf' });
+            // Clean up old blob URL if exists
+            if (pdfBlobUrl) {
+                URL.revokeObjectURL(pdfBlobUrl);
+            }
 
-            // Try to share using Web Share API (works on mobile)
-            if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-                await navigator.share({
-                    title: `${type} ${documentNumber}`,
-                    text: `${type} ${documentNumber} for ${clientName}`,
-                    files: [file]
-                });
-            } else {
-                // Fallback: download the PDF
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = filename;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                URL.revokeObjectURL(url);
-                alert('PDF downloaded! Check your downloads folder.');
-            }
+            // Create blob URL and show viewer
+            const url = URL.createObjectURL(blob);
+            setPdfBlobUrl(url);
+            setShowPdfViewer(true);
+
         } catch (error) {
-            // User cancelled or share failed
-            if (error.name !== 'AbortError') {
-                console.error('PDF generation error:', error);
-                alert('Failed to generate PDF. Please try again.');
-            }
+            console.error('PDF generation error:', error);
+            alert('Failed to generate PDF. Please try again.');
         } finally {
             setIsGeneratingPDF(false);
+        }
+    };
+
+    // Download PDF from viewer
+    const handleDownloadPDF = () => {
+        if (!pdfBlobUrl || !fullDocument) return;
+
+        const { type, documentNumber, clientName } = fullDocument;
+        const filename = `${type}-${documentNumber}-${clientName}.pdf`;
+
+        const link = document.createElement('a');
+        link.href = pdfBlobUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    // Close PDF viewer
+    const handleClosePdfViewer = () => {
+        setShowPdfViewer(false);
+        if (pdfBlobUrl) {
+            URL.revokeObjectURL(pdfBlobUrl);
+            setPdfBlobUrl(null);
         }
     };
 
@@ -452,6 +459,46 @@ const ViewDocumentPage = ({ documentToView, navigateTo, previousPage }) => {
                     <p>{companyInfo.name} | {companyInfo.address} | {companyInfo.phone}</p>
                 </footer>
             </div>
+
+            {/* PDF Viewer Modal */}
+            {showPdfViewer && pdfBlobUrl && (
+                <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-2xl w-full h-full max-w-6xl max-h-[90vh] flex flex-col">
+                        {/* Header */}
+                        <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-4 flex justify-between items-center rounded-t-lg">
+                            <h2 className="text-xl font-bold">{fullDocument?.type} PDF</h2>
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={handleDownloadPDF}
+                                    className="px-4 py-2 bg-white text-indigo-600 rounded-lg hover:bg-gray-100 transition-colors font-medium flex items-center gap-2"
+                                >
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    Download
+                                </button>
+                                <button
+                                    onClick={handleClosePdfViewer}
+                                    className="text-white hover:text-gray-200 transition-colors"
+                                >
+                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* PDF Viewer */}
+                        <div className="flex-1 overflow-hidden">
+                            <iframe
+                                src={pdfBlobUrl}
+                                className="w-full h-full border-0"
+                                title="Document PDF"
+                            />
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
