@@ -493,15 +493,28 @@ const ViewDocumentPage = ({ documentToView, navigateTo, previousPage }) => {
 
             {/* PDF Viewer Modal */}
             {showPdfViewer && pdfBlobUrl && (
-                <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg shadow-2xl w-full h-full max-w-6xl max-h-[90vh] flex flex-col">
+                <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+                    <div className="bg-white w-full h-full flex flex-col">
                         {/* Header */}
-                        <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-4 flex justify-between items-center rounded-t-lg">
-                            <h2 className="text-xl font-bold">{fullDocument?.type} PDF</h2>
-                            <div className="flex gap-3">
+                        <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-3 py-3 flex flex-col gap-3">
+                            {/* Title and Close */}
+                            <div className="flex justify-between items-center">
+                                <h2 className="text-lg sm:text-xl font-bold">{fullDocument?.type}</h2>
+                                <button
+                                    onClick={handleClosePdfViewer}
+                                    className="text-white hover:bg-white/20 p-2 rounded-lg transition-colors"
+                                >
+                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                                    </svg>
+                                </button>
+                            </div>
+
+                            {/* Action Buttons */}
+                            <div className="flex gap-2">
                                 <button
                                     onClick={handleSharePDF}
-                                    className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors font-medium flex items-center gap-2"
+                                    className="flex-1 px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors font-medium flex items-center justify-center gap-2 text-sm"
                                 >
                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
@@ -510,20 +523,12 @@ const ViewDocumentPage = ({ documentToView, navigateTo, previousPage }) => {
                                 </button>
                                 <button
                                     onClick={handleDownloadPDF}
-                                    className="px-4 py-2 bg-white text-indigo-600 rounded-lg hover:bg-gray-100 transition-colors font-medium flex items-center gap-2"
+                                    className="flex-1 px-3 py-2 bg-white text-indigo-600 rounded-lg hover:bg-gray-100 transition-colors font-medium flex items-center justify-center gap-2 text-sm"
                                 >
                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                     </svg>
                                     Download
-                                </button>
-                                <button
-                                    onClick={handleClosePdfViewer}
-                                    className="text-white hover:text-gray-200 transition-colors"
-                                >
-                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
-                                    </svg>
                                 </button>
                             </div>
                         </div>
