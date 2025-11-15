@@ -7,7 +7,8 @@
       "Bash(cat:*)",
       "Bash(npx prisma migrate:*)",
       "Bash(npm install:*)",
-      "Bash(npm uninstall:*)"
+      "Bash(npm uninstall:*)",
+      "Bash(pnpm --version:*)"
     ],
     "deny": [],
     "ask": []

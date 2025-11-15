@@ -1,0 +1,9 @@
+{
+  "buildCommand": "cd packages/frontend && pnpm run build",
+  "outputDirectory": "packages/frontend/build",
+  "installCommand": "pnpm install",
+  "framework": null,
+  "env": {
+    "ENABLE_EXPERIMENTAL_COREPACK": "1"
+  }
+}
