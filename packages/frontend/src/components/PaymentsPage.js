@@ -753,6 +753,38 @@ const PaymentsPage = ({ navigateTo }) => {
         document.body.removeChild(link);
     };
 
+    // Share PDF from viewer (mobile)
+    const handleSharePDF = async () => {
+        if (!pdfBlobUrl || !selectedPaymentForView) return;
+
+        try {
+            const clientName = getClientName(selectedPaymentForView);
+            const receiptNumber = selectedPaymentForView.id.substring(0, 8).toUpperCase();
+            const filename = `Payment-Receipt-${receiptNumber}-${clientName}.pdf`;
+
+            // Fetch the blob from the URL
+            const response = await fetch(pdfBlobUrl);
+            const blob = await response.blob();
+            const file = new File([blob], filename, { type: 'application/pdf' });
+
+            // Check if Web Share API is supported
+            if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                    title: `Payment Receipt ${receiptNumber}`,
+                    text: `Payment Receipt for ${clientName}`,
+                    files: [file]
+                });
+            } else {
+                // Fallback to download on desktop
+                handleDownloadPDF();
+            }
+        } catch (error) {
+            if (error.name !== 'AbortError') {
+                console.error('Share error:', error);
+            }
+        }
+    };
+
     // Close PDF viewer
     const handleClosePdfViewer = () => {
         setShowPdfViewer(false);
@@ -1591,6 +1623,15 @@ const PaymentsPage = ({ navigateTo }) => {
                         <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-4 flex justify-between items-center rounded-t-lg">
                             <h2 className="text-xl font-bold">Payment Receipt PDF</h2>
                             <div className="flex gap-3">
+                                <button
+                                    onClick={handleSharePDF}
+                                    className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors font-medium flex items-center gap-2"
+                                >
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                                    </svg>
+                                    Share
+                                </button>
                                 <button
                                     onClick={handleDownloadPDF}
                                     className="px-4 py-2 bg-white text-blue-600 rounded-lg hover:bg-gray-100 transition-colors font-medium flex items-center gap-2"
