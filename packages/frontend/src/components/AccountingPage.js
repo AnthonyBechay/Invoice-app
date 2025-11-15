@@ -190,7 +190,7 @@ const AccountingPage = () => {
                 // Calculate collected profit
                 if (paid > 0) {
                     const docItemsRevenue = doc.items ? doc.items.reduce((sum, item) => sum + ((item.quantity || 0) * (item.unitPrice || 0)), 0) : 0;
-                    const docItemsCost = doc.items ? doc.items.reduce((sum, item) => sum + ((item.quantity || 0) * (item.stock?.buyingPrice || 0)), 0) : 0;
+                    const docItemsCost = doc.items ? doc.items.reduce((sum, item) => sum + ((item.quantity || 0) * (item.buyingPrice || item.stock?.buyingPrice || 0)), 0) : 0;
                     const docLaborRevenue = doc.laborPrice || 0;
 
                     let docDisplayMandaysRevenue = 0;
@@ -219,7 +219,7 @@ const AccountingPage = () => {
                 if (doc.items && Array.isArray(doc.items)) {
                     doc.items.forEach(item => {
                         const itemRevenue = (item.quantity || 0) * (item.unitPrice || 0);
-                        const itemCost = (item.quantity || 0) * (item.stock?.buyingPrice || 0);
+                        const itemCost = (item.quantity || 0) * (item.buyingPrice || item.stock?.buyingPrice || 0);
                         itemsRevenue += itemRevenue;
                         totalCost += itemCost;
                     });
