@@ -249,7 +249,7 @@ const AdminPage = () => {
             return;
         }
 
-        if (!window.confirm(`Are you sure you want to delete ${selectedDocumentIds.size} document(s)? This will also delete all associated items and payments. This action cannot be undone.`)) {
+        if (!window.confirm(`Are you sure you want to delete ${selectedDocumentIds.size} document(s)?\n\nThis will automatically delete:\n- All document items\n- All associated payments\n\nClients and stock items will NOT be deleted.\n\nThis action cannot be undone.`)) {
             return;
         }
 

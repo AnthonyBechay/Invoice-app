@@ -551,7 +551,11 @@ router.delete('/documents', async (req, res, next) => {
       return res.status(400).json({ error: 'Array of document IDs is required' });
     }
 
-    // Delete the documents (cascade will handle related items and payments)
+    // Delete the documents
+    // Cascade will automatically delete:
+    // - DocumentItems (onDelete: Cascade)
+    // - Payments (onDelete: Cascade)
+    // Clients and Stock items will NOT be deleted (onDelete: SetNull)
     const result = await prisma.document.deleteMany({
       where: {
         id: { in: ids }
