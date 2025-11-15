@@ -56,9 +56,23 @@ router.get('/', async (req, res, next) => {
       }
     });
 
+    // Filter out orphaned payments (payments with documentId but document doesn't exist)
+    // This happens when documents are deleted but payments weren't cascade deleted
+    // IMPORTANT: Allow payments with null documentId (on-account/standalone payments) - these are valid
+    // Only exclude payments that have a documentId but the document no longer exists
+    const validPayments = payments.filter(payment => {
+      // If payment has no documentId (null), it's an on-account payment and is always valid
+      if (!payment.documentId) {
+        return true;
+      }
+      // If payment has a documentId, the document must exist (not null)
+      // If document is null, it means the document was deleted, so exclude this orphaned payment
+      return payment.document !== null;
+    });
+
     // Check if there are more payments
-    const hasMore = payments.length > limit;
-    const actualPayments = hasMore ? payments.slice(0, limit) : payments;
+    const hasMore = validPayments.length > limit;
+    const actualPayments = hasMore ? validPayments.slice(0, limit) : validPayments;
 
     // Return paginated response without total count (much faster)
     res.json({

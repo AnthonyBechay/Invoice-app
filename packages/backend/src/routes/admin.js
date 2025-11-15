@@ -551,20 +551,45 @@ router.delete('/documents', async (req, res, next) => {
       return res.status(400).json({ error: 'Array of document IDs is required' });
     }
 
-    // Delete the documents
-    // Cascade will automatically delete:
-    // - DocumentItems (onDelete: Cascade)
-    // - Payments (onDelete: Cascade)
-    // Clients and Stock items will NOT be deleted (onDelete: SetNull)
-    const result = await prisma.document.deleteMany({
-      where: {
-        id: { in: ids }
-      }
+    // Use a transaction to ensure all related data is deleted properly
+    const result = await prisma.$transaction(async (tx) => {
+      // First, explicitly delete all payments associated with these documents
+      // This ensures payments are deleted even if cascade hasn't been applied yet
+      const deletedPayments = await tx.payment.deleteMany({
+        where: {
+          documentId: { in: ids }
+        }
+      });
+
+      // Delete all document items (cascade should handle this, but being explicit)
+      const deletedItems = await tx.documentItem.deleteMany({
+        where: {
+          documentId: { in: ids }
+        }
+      });
+
+      // Finally, delete the documents themselves
+      // DocumentItems will be cascade deleted
+      // Payments are already deleted above
+      // Clients and Stock items will NOT be deleted (onDelete: SetNull)
+      const deletedDocuments = await tx.document.deleteMany({
+        where: {
+          id: { in: ids }
+        }
+      });
+
+      return {
+        documents: deletedDocuments.count,
+        payments: deletedPayments.count,
+        items: deletedItems.count
+      };
     });
 
     res.json({
-      message: `Successfully deleted ${result.count} document(s)`,
-      deleted: result.count
+      message: `Successfully deleted ${result.documents} document(s), ${result.payments} payment(s), and ${result.items} item(s)`,
+      deleted: result.documents,
+      deletedPayments: result.payments,
+      deletedItems: result.items
     });
   } catch (error) {
     next(error);
