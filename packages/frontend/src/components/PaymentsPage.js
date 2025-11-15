@@ -838,28 +838,28 @@ const PaymentsPage = ({ navigateTo }) => {
             <style>{`
                 @media print {
                     @page {
-                        margin: 1cm;
+                        margin: 0.5cm;
                         size: A4;
                     }
                     * {
                         -webkit-print-color-adjust: exact !important;
                         print-color-adjust: exact !important;
                     }
-                    body {
-                        margin: 0;
-                        padding: 0;
+                    html, body {
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        width: 100% !important;
+                        height: auto !important;
+                        overflow: visible !important;
                     }
-                    body * {
-                        visibility: hidden;
-                    }
-                    .print-area,
-                    .print-area * {
-                        visibility: visible !important;
+                    body > *:not(.print-area) {
+                        display: none !important;
                     }
                     .print-area {
-                        position: absolute !important;
-                        left: 0 !important;
-                        top: 0 !important;
+                        display: block !important;
+                        position: relative !important;
+                        left: auto !important;
+                        top: auto !important;
                         width: 100% !important;
                         max-width: 100% !important;
                         margin: 0 !important;
@@ -867,19 +867,50 @@ const PaymentsPage = ({ navigateTo }) => {
                         background: white !important;
                         box-shadow: none !important;
                         border: none !important;
+                        page-break-after: avoid;
+                        page-break-inside: avoid;
+                    }
+                    .print-area * {
+                        visibility: visible !important;
+                    }
+                    .print-area .flex {
+                        display: flex !important;
+                    }
+                    .print-area .flex.justify-center {
+                        display: flex !important;
+                        justify-content: center !important;
+                    }
+                    .print-area .flex.justify-between {
+                        display: flex !important;
+                        justify-content: space-between !important;
+                    }
+                    .print-area .text-center {
+                        text-align: center !important;
+                    }
+                    .print-area .text-right {
+                        text-align: right !important;
+                    }
+                    .print-area span,
+                    .print-area p,
+                    .print-area div:not(.flex) {
+                        display: block !important;
+                    }
+                    .print-area .space-y-4 > * + * {
+                        margin-top: 1rem !important;
                     }
                     .no-print,
                     .no-print * {
                         display: none !important;
                         visibility: hidden !important;
                     }
-                    /* Ensure all text is visible */
+                    /* Ensure all text is visible and black */
                     .print-area h1,
                     .print-area h2,
+                    .print-area h3,
                     .print-area p,
                     .print-area span,
                     .print-area div {
-                        color: #000 !important;
+                        color: #000000 !important;
                         background: transparent !important;
                     }
                     /* Ensure logo is visible */
@@ -888,6 +919,10 @@ const PaymentsPage = ({ navigateTo }) => {
                         visibility: visible !important;
                         max-width: 200px !important;
                         height: auto !important;
+                    }
+                    /* Ensure borders are visible */
+                    .print-area [class*="border"] {
+                        border-color: #000000 !important;
                     }
                 }
             `}</style>
@@ -1521,8 +1556,8 @@ const PaymentsPage = ({ navigateTo }) => {
 
             {/* Payment Receipt Modal */}
             {showPaymentReceipt && selectedPaymentForView && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 no-print">
-                    <div className="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 no-print" style={{ display: 'flex' }}>
+                    <div className="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col no-print">
                         <div className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-4 no-print">
                             <div className="flex justify-between items-center">
                                 <div>
@@ -1545,8 +1580,8 @@ const PaymentsPage = ({ navigateTo }) => {
                             </div>
                         </div>
 
-                        <div className="p-6 overflow-y-auto flex-1">
-                            <div ref={receiptPrintRef} className="print-area bg-white p-6 rounded-lg" style={{ maxWidth: '794px', margin: '0 auto' }}>
+                        <div className="p-6 overflow-y-auto flex-1 no-print">
+                            <div ref={receiptPrintRef} className="print-area bg-white p-8" style={{ maxWidth: '794px', margin: '0 auto' }}>
                                 {/* Company Info */}
                                 <div className="text-center mb-6 border-b-2 border-gray-300 pb-4">
                                     {userSettings?.logo && (
