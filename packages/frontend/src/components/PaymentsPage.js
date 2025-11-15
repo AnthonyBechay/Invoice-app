@@ -693,49 +693,48 @@ const PaymentsPage = ({ navigateTo }) => {
         }
     };
 
-    // PDF generation for payment receipt - optimized for single page and mobile
+    // PDF generation for payment receipt - same approach as invoices/proformas
     const handleGenerateReceiptPDF = async () => {
         if (!selectedPaymentForView || !receiptPrintRef.current) return;
 
         try {
             setIsGeneratingReceiptPDF(true);
-            
+
             const clientName = getClientName(selectedPaymentForView);
-            const filename = `Payment-Receipt-${selectedPaymentForView.id.substring(0, 8)}-${clientName.replace(/[^a-z0-9]/gi, '_')}.pdf`;
+            const receiptNumber = selectedPaymentForView.id.substring(0, 8).toUpperCase();
+            const filename = `Payment-Receipt-${receiptNumber}-${clientName}.pdf`;
+
+            console.log('Capturing canvas...');
+            // A4 dimensions in pixels at 96 DPI (standard screen resolution)
+            // A4: 210mm x 297mm = 8.27" x 11.69" = 794px x 1123px at 96 DPI
+            const a4WidthPx = 794; // A4 width in pixels (210mm = 794px at 96 DPI)
+
             const element = receiptPrintRef.current;
-            
-            // A4 dimensions in pixels at 96 DPI
-            const a4WidthPx = 794; // 210mm = 794px
-            const a4HeightPx = 1123; // 297mm = 1123px
 
             // Store original styles
             const originalWidth = element.style.width;
             const originalMaxWidth = element.style.maxWidth;
             const originalMargin = element.style.margin;
-            const originalPadding = element.style.padding;
-            const originalBackground = element.style.background;
 
-            // Set fixed A4 width for consistent capture
+            // Set fixed A4 width for consistent capture (matches browser print)
             element.style.width = a4WidthPx + 'px';
             element.style.maxWidth = a4WidthPx + 'px';
-            element.style.margin = '0 auto';
-            element.style.padding = '40px';
-            element.style.background = '#ffffff';
-            element.style.boxSizing = 'border-box';
-            
+            element.style.margin = '0';
+            element.style.padding = '32px'; // 8*4 = 32px padding
+
             // Force layout recalculation
-            element.offsetHeight;
+            element.offsetHeight; // Trigger reflow
 
             // Wait for logo image to load if present
             const logoImg = element.querySelector('img');
             if (logoImg && logoImg.src) {
-                await new Promise((resolve) => {
-                    if (logoImg.complete && logoImg.naturalHeight !== 0) {
+                await new Promise((resolve, reject) => {
+                    if (logoImg.complete) {
                         resolve();
                     } else {
                         logoImg.onload = resolve;
-                        logoImg.onerror = resolve; // Continue even if logo fails
-                        setTimeout(resolve, 1500); // Timeout after 1.5s
+                        logoImg.onerror = resolve; // Continue even if logo fails to load
+                        setTimeout(resolve, 500); // Timeout after 500ms
                     }
                 });
             }
@@ -743,13 +742,15 @@ const PaymentsPage = ({ navigateTo }) => {
             // Wait for layout to update
             await new Promise(resolve => setTimeout(resolve, 300));
 
-            // Get actual dimensions
+            // Get the actual rendered dimensions
             const elementWidth = element.offsetWidth || a4WidthPx;
-            const elementHeight = Math.min(element.scrollHeight, a4HeightPx * 0.9); // Limit to 90% of page height
+            const elementHeight = element.scrollHeight || element.offsetHeight;
 
-            // Capture with optimized settings for mobile
+            console.log('Element dimensions:', elementWidth, 'x', elementHeight);
+
+            // Capture the print area as canvas - use A4 width for consistency
             const canvas = await html2canvas(element, {
-                scale: window.devicePixelRatio > 1 ? 2 : 2, // Higher quality
+                scale: 2, // Higher scale for better quality
                 useCORS: true,
                 logging: false,
                 backgroundColor: '#ffffff',
@@ -757,24 +758,24 @@ const PaymentsPage = ({ navigateTo }) => {
                 height: elementHeight,
                 windowWidth: elementWidth,
                 windowHeight: elementHeight,
+                removeContainer: false,
                 allowTaint: true,
-                imageTimeout: 20000,
+                imageTimeout: 15000,
                 onclone: (clonedDoc) => {
+                    // Ensure the cloned element maintains A4 width and proper styling
                     const clonedElement = clonedDoc.querySelector('.print-area');
                     if (clonedElement) {
                         clonedElement.style.width = elementWidth + 'px';
                         clonedElement.style.maxWidth = elementWidth + 'px';
                         clonedElement.style.margin = '0';
-                        clonedElement.style.padding = '40px';
-                        clonedElement.style.background = '#ffffff';
+                        clonedElement.style.padding = '32px';
                         clonedElement.style.boxSizing = 'border-box';
-                        
-                        // Ensure all images are visible
+
+                        // Ensure logo images load
                         const images = clonedElement.querySelectorAll('img');
                         images.forEach(img => {
-                            img.style.display = 'block';
-                            img.style.visibility = 'visible';
                             if (img.src && !img.complete) {
+                                // Force load
                                 const src = img.src;
                                 img.src = '';
                                 img.src = src;
@@ -788,82 +789,135 @@ const PaymentsPage = ({ navigateTo }) => {
             element.style.width = originalWidth;
             element.style.maxWidth = originalMaxWidth;
             element.style.margin = originalMargin;
-            element.style.padding = originalPadding;
-            element.style.background = originalBackground;
 
-            // Convert to PDF
+            console.log('Canvas captured:', canvas.width, 'x', canvas.height);
+
+            // Convert canvas to image data
             const imgData = canvas.toDataURL('image/png', 1.0);
+            console.log('Image data generated, length:', imgData.length);
+
+            // A4 dimensions in mm
+            const a4Width = 210; // A4 width in mm
+            const a4Height = 297; // A4 height in mm
+
+            // Calculate the scale factor: canvas pixels to mm
+            // We want the image to fill the full A4 page width
+            const pixelsPerMm = canvas.width / a4Width;
+            const imgWidthMm = a4Width; // Full A4 width
+            const imgHeightMm = canvas.height / pixelsPerMm; // Maintain aspect ratio
+
+            console.log('PDF dimensions: A4', a4Width, 'x', a4Height, 'mm');
+            console.log('Image dimensions:', imgWidthMm, 'x', imgHeightMm, 'mm');
+
+            // Create PDF instance - use standard A4 format
             const pdf = new jsPDF({
                 orientation: 'portrait',
                 unit: 'mm',
-                format: 'a4',
-                compress: true
+                format: 'a4'
             });
 
-            // A4 dimensions in mm
-            const a4Width = 210;
-            const a4Height = 297;
-            const pixelsPerMm = canvas.width / a4Width;
-            const imgHeightMm = canvas.height / pixelsPerMm;
+            console.log('Adding image to PDF...');
+            // Add image to PDF - fill full width (A4 format)
+            // For content taller than A4, add multiple pages (only if actually needed)
+            const pageHeight = a4Height;
 
-            // Always fit to single page - scale if needed
-            if (imgHeightMm <= a4Height) {
-                // Content fits on one page
-                pdf.addImage(imgData, 'PNG', 0, 0, a4Width, imgHeightMm, undefined, 'FAST');
+            if (imgHeightMm <= pageHeight) {
+                // Single page - add image at top
+                pdf.addImage(imgData, 'PNG', 0, 0, imgWidthMm, imgHeightMm, undefined, 'FAST');
             } else {
-                // Content is too tall - scale down to fit one page
-                const scale = a4Height / imgHeightMm;
-                const scaledWidth = a4Width * scale;
-                const scaledHeight = a4Height;
-                pdf.addImage(imgData, 'PNG', (a4Width - scaledWidth) / 2, 0, scaledWidth, scaledHeight, undefined, 'FAST');
+                // Multiple pages needed - split image across pages
+                const sourceHeight = canvas.height;
+                const sourceWidth = canvas.width;
+                let yOffset = 0;
+
+                while (yOffset < imgHeightMm) {
+                    if (yOffset > 0) {
+                        pdf.addPage();
+                    }
+
+                    const remainingHeight = imgHeightMm - yOffset;
+                    const heightThisPage = Math.min(pageHeight, remainingHeight);
+
+                    // Only proceed if we actually have content for this page
+                    if (heightThisPage <= 0) break;
+
+                    // Calculate source canvas region for this page
+                    const sourceY = (yOffset / imgHeightMm) * sourceHeight;
+                    const sourceHeightThisPage = Math.ceil((heightThisPage / imgHeightMm) * sourceHeight);
+
+                    // Ensure we don't exceed source canvas bounds
+                    if (sourceY >= sourceHeight) break;
+
+                    // Create temporary canvas for this page slice
+                    const pageCanvas = document.createElement('canvas');
+                    pageCanvas.width = sourceWidth;
+                    pageCanvas.height = Math.min(sourceHeightThisPage, sourceHeight - sourceY);
+                    const ctx = pageCanvas.getContext('2d');
+                    ctx.drawImage(canvas, 0, sourceY, sourceWidth, Math.min(sourceHeightThisPage, sourceHeight - sourceY), 0, 0, sourceWidth, Math.min(sourceHeightThisPage, sourceHeight - sourceY));
+
+                    const pageImgData = pageCanvas.toDataURL('image/png', 1.0);
+                    pdf.addImage(pageImgData, 'PNG', 0, 0, imgWidthMm, heightThisPage, undefined, 'FAST');
+
+                    yOffset += heightThisPage;
+
+                    // Prevent infinite loop
+                    if (yOffset >= imgHeightMm) break;
+                }
             }
 
-            // Generate and download/share PDF
+            console.log('Generating PDF blob...');
+            // Generate PDF blob
             const pdfBlob = pdf.output('blob');
+            console.log('PDF blob generated, size:', pdfBlob.size);
+
+            // Create a File object for sharing
             const file = new File([pdfBlob], filename, { type: 'application/pdf' });
 
-            // Try to share on mobile devices, otherwise download
-            const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-            const isAndroid = /Android/i.test(navigator.userAgent);
-            const isMobile = isIOS || isAndroid;
-
-            if (isMobile && navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-                try {
-                    await navigator.share({
-                        title: `Payment Receipt`,
-                        text: `Payment Receipt for ${clientName}`,
-                        files: [file]
-                    });
-                } catch (shareError) {
-                    if (shareError.name !== 'AbortError') {
-                        // Fallback to download
-                        downloadPDF(pdfBlob, filename);
-                    }
-                }
+            console.log('Sharing PDF file...');
+            // Share the PDF file - same approach as invoices/proformas
+            if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                    title: `Payment Receipt ${receiptNumber}`,
+                    text: `Payment Receipt ${receiptNumber} for ${clientName}`,
+                    files: [file]
+                });
+                console.log('PDF shared successfully');
             } else {
-                // Download PDF
-                downloadPDF(pdfBlob, filename);
+                console.log('Share API not available, downloading instead...');
+                // Fallback: download the PDF
+                const url = URL.createObjectURL(pdfBlob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+                alert('PDF generated! Check your downloads folder.');
             }
         } catch (error) {
+            // User cancelled or share failed
             if (error.name !== 'AbortError') {
-                console.error('PDF generation error:', error);
-                alert('Failed to generate PDF. Please try again.');
+                console.error('Share error details:', error);
+                console.error('Error stack:', error.stack);
+                console.error('Error message:', error.message);
+
+                // Show user-friendly error message
+                let errorMessage = 'Failed to generate PDF. ';
+                if (error.message.includes('canvas') || error.name === 'SecurityError') {
+                    errorMessage += 'Could not capture document image. Please ensure the document is fully loaded.';
+                } else if (error.message.includes('Share') || error.name === 'AbortError') {
+                    // User cancelled - silently fail
+                    return;
+                } else {
+                    errorMessage += error.message || 'Unknown error occurred. Please try again.';
+                }
+
+                alert(errorMessage);
             }
         } finally {
             setIsGeneratingReceiptPDF(false);
         }
-    };
-
-    // Helper function to download PDF
-    const downloadPDF = (pdfBlob, filename) => {
-        const url = URL.createObjectURL(pdfBlob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
     };
 
     return (
@@ -1653,9 +1707,12 @@ const PaymentsPage = ({ navigateTo }) => {
                             <button
                                 onClick={handleGenerateReceiptPDF}
                                 disabled={isGeneratingReceiptPDF}
-                                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-medium shadow-md no-print disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-medium shadow-md no-print disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                             >
-                                {isGeneratingReceiptPDF ? 'Generating PDF...' : 'Print / Save PDF'}
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                                </svg>
+                                {isGeneratingReceiptPDF ? 'Generating PDF...' : 'Share / Save PDF'}
                             </button>
                             {selectedPaymentForView?.documentId && navigateTo && (
                                 <button
