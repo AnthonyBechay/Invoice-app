@@ -497,5 +497,75 @@ router.delete('/unused/clients', async (req, res, next) => {
   }
 });
 
+/**
+ * Get documents (invoices/proformas) by user
+ */
+router.get('/unused/documents', async (req, res, next) => {
+  try {
+    const { userId, type } = req.query;
+    
+    const where = {};
+    if (userId) {
+      where.userId = String(userId);
+    }
+    if (type) {
+      where.type = type.toUpperCase();
+    }
+    
+    // Get all documents matching the filter
+    const documents = await prisma.document.findMany({
+      where,
+      select: {
+        id: true,
+        type: true,
+        documentNumber: true,
+        date: true,
+        total: true,
+        status: true,
+        clientName: true,
+        userId: true,
+        user: {
+          select: {
+            email: true
+          }
+        },
+        createdAt: true
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    res.json(documents);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * Delete documents (bulk delete)
+ */
+router.delete('/unused/documents', async (req, res, next) => {
+  try {
+    const { ids } = req.body;
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'Array of document IDs is required' });
+    }
+
+    // Delete the documents (cascade will handle related items and payments)
+    const result = await prisma.document.deleteMany({
+      where: {
+        id: { in: ids }
+      }
+    });
+
+    res.json({
+      message: `Successfully deleted ${result.count} document(s)`,
+      deleted: result.count
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export default router;
 

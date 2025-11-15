@@ -18,11 +18,14 @@ const AdminPage = () => {
     const [activeTab, setActiveTab] = useState('overview');
     const [unusedStock, setUnusedStock] = useState([]);
     const [unusedClients, setUnusedClients] = useState([]);
+    const [unusedDocuments, setUnusedDocuments] = useState([]);
     const [selectedStockIds, setSelectedStockIds] = useState(new Set());
     const [selectedClientIds, setSelectedClientIds] = useState(new Set());
+    const [selectedDocumentIds, setSelectedDocumentIds] = useState(new Set());
     const [loadingUnused, setLoadingUnused] = useState(false);
     const [deletingUnused, setDeletingUnused] = useState(false);
     const [selectedUserId, setSelectedUserId] = useState('');
+    const [selectedDocumentType, setSelectedDocumentType] = useState('all');
 
     // Check if user is admin
     const isAdmin = user?.email === 'anthonybechay1@gmail.com';
@@ -103,14 +106,21 @@ const AdminPage = () => {
         try {
             setLoadingUnused(true);
             const params = selectedUserId ? { userId: selectedUserId } : {};
-            const [stockData, clientsData] = await Promise.all([
+            const documentParams = { ...params };
+            if (selectedDocumentType !== 'all') {
+                documentParams.type = selectedDocumentType;
+            }
+            const [stockData, clientsData, documentsData] = await Promise.all([
                 adminAPI.getUnusedStock(params),
-                adminAPI.getUnusedClients(params)
+                adminAPI.getUnusedClients(params),
+                adminAPI.getUnusedDocuments(documentParams)
             ]);
             setUnusedStock(stockData);
             setUnusedClients(clientsData);
+            setUnusedDocuments(documentsData);
             setSelectedStockIds(new Set());
             setSelectedClientIds(new Set());
+            setSelectedDocumentIds(new Set());
         } catch (error) {
             console.error('Error fetching unused data:', error);
             setFeedback({ type: 'error', message: 'Failed to load unused data' });
@@ -208,6 +218,53 @@ const AdminPage = () => {
             setTimeout(() => setFeedback({ type: '', message: '' }), 5000);
         } catch (error) {
             setFeedback({ type: 'error', message: error.message || 'Failed to delete clients' });
+        } finally {
+            setDeletingUnused(false);
+        }
+    };
+
+    const handleToggleDocumentSelection = (id) => {
+        setSelectedDocumentIds(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(id)) {
+                newSet.delete(id);
+            } else {
+                newSet.add(id);
+            }
+            return newSet;
+        });
+    };
+
+    const handleSelectAllDocuments = () => {
+        if (selectedDocumentIds.size === unusedDocuments.length) {
+            setSelectedDocumentIds(new Set());
+        } else {
+            setSelectedDocumentIds(new Set(unusedDocuments.map(doc => doc.id)));
+        }
+    };
+
+    const handleDeleteSelectedDocuments = async () => {
+        if (selectedDocumentIds.size === 0) {
+            setFeedback({ type: 'error', message: 'Please select at least one document to delete' });
+            return;
+        }
+
+        if (!window.confirm(`Are you sure you want to delete ${selectedDocumentIds.size} document(s)? This will also delete all associated items and payments. This action cannot be undone.`)) {
+            return;
+        }
+
+        try {
+            setDeletingUnused(true);
+            setFeedback({ type: '', message: '' });
+            const result = await adminAPI.deleteUnusedDocuments(Array.from(selectedDocumentIds));
+            setFeedback({ 
+                type: 'success', 
+                message: result.message || `Successfully deleted ${result.deleted} document(s)` 
+            });
+            await fetchUnusedData();
+            setTimeout(() => setFeedback({ type: '', message: '' }), 5000);
+        } catch (error) {
+            setFeedback({ type: 'error', message: error.message || 'Failed to delete documents' });
         } finally {
             setDeletingUnused(false);
         }
@@ -627,7 +684,7 @@ const AdminPage = () => {
                             <div>
                                 <h2 className="text-2xl font-bold text-gray-800 mb-2">Data Cleanup</h2>
                                 <p className="text-gray-600 text-sm">
-                                    Delete unused stock items and clients that are not referenced in any documents.
+                                    Delete unused stock items, clients, and documents (invoices/proformas) per user.
                                     <strong className="text-red-600"> This action cannot be undone.</strong>
                                 </p>
                             </div>
@@ -640,6 +697,7 @@ const AdminPage = () => {
                                         // Clear selections when filter changes
                                         setSelectedStockIds(new Set());
                                         setSelectedClientIds(new Set());
+                                        setSelectedDocumentIds(new Set());
                                     }}
                                     onBlur={() => fetchUnusedData()}
                                     className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
@@ -821,6 +879,129 @@ const AdminPage = () => {
                                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{client.phone || '-'}</td>
                                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{client.location || '-'}</td>
                                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{client.user?.email || '-'}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Documents Section */}
+                            <div className="bg-white rounded-lg shadow-md overflow-hidden">
+                                <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                                    <div>
+                                        <h3 className="text-xl font-bold text-gray-800">Documents (Invoices & Proformas)</h3>
+                                        <p className="text-sm text-gray-500 mt-1">
+                                            {unusedDocuments.length} document(s) found
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <label className="text-sm font-medium text-gray-700">Type:</label>
+                                        <select
+                                            value={selectedDocumentType}
+                                            onChange={(e) => {
+                                                setSelectedDocumentType(e.target.value);
+                                                setSelectedDocumentIds(new Set());
+                                            }}
+                                            onBlur={() => fetchUnusedData()}
+                                            className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                                        >
+                                            <option value="all">All Documents</option>
+                                            <option value="INVOICE">Invoices Only</option>
+                                            <option value="PROFORMA">Proformas Only</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                {unusedDocuments.length > 0 && (
+                                    <div className="px-6 py-4 border-b border-gray-200 flex justify-end">
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={handleSelectAllDocuments}
+                                                className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-sm"
+                                            >
+                                                {selectedDocumentIds.size === unusedDocuments.length ? 'Deselect All' : 'Select All'}
+                                            </button>
+                                            <button
+                                                onClick={handleDeleteSelectedDocuments}
+                                                disabled={selectedDocumentIds.size === 0 || deletingUnused}
+                                                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                                            >
+                                                {deletingUnused ? 'Deleting...' : `Delete Selected (${selectedDocumentIds.size})`}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                                {unusedDocuments.length === 0 ? (
+                                    <div className="px-6 py-8 text-center text-gray-500">
+                                        No documents found for the selected filters.
+                                    </div>
+                                ) : (
+                                    <div className="overflow-x-auto">
+                                        <table className="min-w-full divide-y divide-gray-200">
+                                            <thead className="bg-gray-50">
+                                                <tr>
+                                                    <th className="px-6 py-3 text-left">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedDocumentIds.size === unusedDocuments.length && unusedDocuments.length > 0}
+                                                            onChange={handleSelectAllDocuments}
+                                                            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                                        />
+                                                    </th>
+                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Document #</th>
+                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Client</th>
+                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="bg-white divide-y divide-gray-200">
+                                                {unusedDocuments.map((doc) => (
+                                                    <tr key={doc.id} className="hover:bg-gray-50">
+                                                        <td className="px-6 py-4 whitespace-nowrap">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={selectedDocumentIds.has(doc.id)}
+                                                                onChange={() => handleToggleDocumentSelection(doc.id)}
+                                                                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                                            />
+                                                        </td>
+                                                        <td className="px-6 py-4 whitespace-nowrap">
+                                                            <div className="text-sm font-medium text-gray-900">{doc.documentNumber}</div>
+                                                        </td>
+                                                        <td className="px-6 py-4 whitespace-nowrap">
+                                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                                                doc.type === 'INVOICE' 
+                                                                    ? 'bg-blue-100 text-blue-800' 
+                                                                    : 'bg-purple-100 text-purple-800'
+                                                            }`}>
+                                                                {doc.type}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{doc.clientName || '-'}</td>
+                                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                            {new Date(doc.date).toLocaleDateString()}
+                                                        </td>
+                                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                                            {formatCurrency(doc.total)}
+                                                        </td>
+                                                        <td className="px-6 py-4 whitespace-nowrap">
+                                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                                                doc.status === 'PAID' 
+                                                                    ? 'bg-green-100 text-green-800'
+                                                                    : doc.status === 'CANCELLED'
+                                                                    ? 'bg-red-100 text-red-800'
+                                                                    : doc.status === 'CONVERTED'
+                                                                    ? 'bg-yellow-100 text-yellow-800'
+                                                                    : 'bg-gray-100 text-gray-800'
+                                                            }`}>
+                                                                {doc.status || 'DRAFT'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{doc.user?.email || '-'}</td>
                                                     </tr>
                                                 ))}
                                             </tbody>
