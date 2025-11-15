@@ -837,92 +837,25 @@ const PaymentsPage = ({ navigateTo }) => {
         <div className="max-w-7xl mx-auto">
             <style>{`
                 @media print {
-                    @page {
-                        margin: 0.5cm;
-                        size: A4;
+                    body * {
+                        visibility: hidden;
                     }
-                    * {
-                        -webkit-print-color-adjust: exact !important;
-                        print-color-adjust: exact !important;
-                    }
-                    html, body {
-                        margin: 0 !important;
-                        padding: 0 !important;
-                        width: 100% !important;
-                        height: auto !important;
-                        overflow: visible !important;
-                    }
-                    body > *:not(.print-area) {
-                        display: none !important;
+                    .print-area, .print-area * {
+                        visibility: visible !important;
                     }
                     .print-area {
-                        display: block !important;
-                        position: relative !important;
-                        left: auto !important;
-                        top: auto !important;
+                        position: absolute !important;
+                        left: 0 !important;
+                        top: 0 !important;
                         width: 100% !important;
-                        max-width: 100% !important;
-                        margin: 0 !important;
-                        padding: 20px !important;
-                        background: white !important;
-                        box-shadow: none !important;
-                        border: none !important;
-                        page-break-after: avoid;
-                        page-break-inside: avoid;
-                    }
-                    .print-area * {
-                        visibility: visible !important;
-                    }
-                    .print-area .flex {
-                        display: flex !important;
-                    }
-                    .print-area .flex.justify-center {
-                        display: flex !important;
-                        justify-content: center !important;
-                    }
-                    .print-area .flex.justify-between {
-                        display: flex !important;
-                        justify-content: space-between !important;
-                    }
-                    .print-area .text-center {
-                        text-align: center !important;
-                    }
-                    .print-area .text-right {
-                        text-align: right !important;
-                    }
-                    .print-area span,
-                    .print-area p,
-                    .print-area div:not(.flex) {
                         display: block !important;
                     }
-                    .print-area .space-y-4 > * + * {
-                        margin-top: 1rem !important;
-                    }
-                    .no-print,
-                    .no-print * {
-                        display: none !important;
+                    .no-print {
                         visibility: hidden !important;
                     }
-                    /* Ensure all text is visible and black */
-                    .print-area h1,
-                    .print-area h2,
-                    .print-area h3,
-                    .print-area p,
-                    .print-area span,
-                    .print-area div {
-                        color: #000000 !important;
-                        background: transparent !important;
-                    }
-                    /* Ensure logo is visible */
-                    .print-area img {
-                        display: block !important;
+                    .no-print .print-area {
                         visibility: visible !important;
-                        max-width: 200px !important;
-                        height: auto !important;
-                    }
-                    /* Ensure borders are visible */
-                    .print-area [class*="border"] {
-                        border-color: #000000 !important;
+                        display: block !important;
                     }
                 }
             `}</style>
