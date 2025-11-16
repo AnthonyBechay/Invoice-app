@@ -626,15 +626,15 @@ const AccountingPage = () => {
                     <h2 className="text-xl font-semibold text-gray-700 mb-4">Revenue Breakdown</h2>
                     <div className="space-y-3">
                         <div className="flex justify-between items-center">
-                            <span className="text-gray-600">Items Revenue (Your Profit)</span>
+                            <span className="text-gray-600">Items Revenue</span>
                             <span className="font-semibold text-green-600">${stats.itemsRevenue.toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between items-center">
-                            <span className="text-gray-600">Labor Revenue (Your Profit)</span>
+                            <span className="text-gray-600">Labor Revenue</span>
                             <span className="font-semibold text-green-600">${stats.laborRevenue.toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between items-center">
-                            <span className="text-gray-600">Display Mandays (Your Profit)</span>
+                            <span className="text-gray-600">Display Mandays</span>
                             <span className="font-semibold text-green-600">${stats.displayMandaysRevenue.toFixed(2)}</span>
                         </div>
                         <div className="text-xs text-gray-500 mt-1 mb-2">
