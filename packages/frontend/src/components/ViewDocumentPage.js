@@ -111,22 +111,67 @@ const ViewDocumentPage = ({ documentToView, navigateTo, previousPage }) => {
         }
     };
 
-    // Download PDF from viewer
-    const handleDownloadPDF = () => {
-        if (!pdfBlobUrl || !fullDocument) return;
-
-        const { type, documentNumber, clientName } = fullDocument;
-        const filename = `${type}-${documentNumber}-${clientName}.pdf`;
-
-        const link = document.createElement('a');
-        link.href = pdfBlobUrl;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+    // Helper to detect mobile device
+    const isMobileDevice = () => {
+        return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     };
 
-    // Share PDF from viewer (mobile)
+    // Download PDF from viewer - improved for mobile browsers
+    const handleDownloadPDF = async () => {
+        if (!pdfBlobUrl || !fullDocument) return;
+
+        try {
+            const { type, documentNumber, clientName } = fullDocument;
+            const filename = `${type}-${documentNumber}-${clientName}.pdf`;
+
+            // Fetch the blob
+            const response = await fetch(pdfBlobUrl);
+            const blob = await response.blob();
+
+            // For mobile browsers, especially Android Chrome, use a different approach
+            if (isMobileDevice()) {
+                // Create object URL from blob
+                const url = URL.createObjectURL(blob);
+                
+                // Try to open in new tab/window (Android Chrome can handle this)
+                const newWindow = window.open(url, '_blank');
+                
+                // If popup blocked, fall back to download link
+                if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+                    // Popup blocked, use download link
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = filename;
+                    link.style.display = 'none';
+                    document.body.appendChild(link);
+                    link.click();
+                    
+                    // Clean up after a delay
+                    setTimeout(() => {
+                        document.body.removeChild(link);
+                        URL.revokeObjectURL(url);
+                    }, 100);
+                } else {
+                    // Clean up URL after window opens
+                    setTimeout(() => URL.revokeObjectURL(url), 1000);
+                }
+            } else {
+                // Desktop: use standard download
+                const link = document.createElement('a');
+                link.href = pdfBlobUrl;
+                link.download = filename;
+                link.style.display = 'none';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+        } catch (error) {
+            console.error('Download error:', error);
+            alert('Failed to download PDF. Please try again.');
+        }
+    };
+
+    // Share PDF from viewer (mobile) - improved for Android Chrome
     const handleSharePDF = async () => {
         if (!pdfBlobUrl || !fullDocument) return;
 
@@ -139,20 +184,50 @@ const ViewDocumentPage = ({ documentToView, navigateTo, previousPage }) => {
             const blob = await response.blob();
             const file = new File([blob], filename, { type: 'application/pdf' });
 
-            // Check if Web Share API is supported
-            if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-                await navigator.share({
-                    title: `${type} ${documentNumber}`,
-                    text: `${type} ${documentNumber} for ${clientName}`,
-                    files: [file]
-                });
-            } else {
-                // Fallback to download on desktop
-                handleDownloadPDF();
+            // Check if Web Share API is supported (with files)
+            if (navigator.share) {
+                try {
+                    // Try sharing with file first (works on Android Chrome 89+)
+                    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                        await navigator.share({
+                            title: `${type} ${documentNumber}`,
+                            text: `${type} ${documentNumber} for ${clientName}`,
+                            files: [file]
+                        });
+                        return; // Success, exit
+                    }
+                } catch (shareError) {
+                    // If file sharing fails, try without files (text-only share)
+                    if (shareError.name !== 'AbortError') {
+                        console.log('File sharing not supported, trying text-only share:', shareError);
+                        
+                        // Try text-only share as fallback
+                        try {
+                            await navigator.share({
+                                title: `${type} ${documentNumber}`,
+                                text: `${type} ${documentNumber} for ${clientName}\n\nOpen the PDF viewer to download the file.`
+                            });
+                            return; // Success with text share
+                        } catch (textShareError) {
+                            if (textShareError.name !== 'AbortError') {
+                                console.log('Text share also failed, falling back to download:', textShareError);
+                            }
+                        }
+                    } else {
+                        // User cancelled, just return
+                        return;
+                    }
+                }
             }
+
+            // Fallback: Use download method (works on all browsers)
+            // On mobile, this will open the PDF in a new tab which users can then save/share
+            await handleDownloadPDF();
         } catch (error) {
             if (error.name !== 'AbortError') {
                 console.error('Share error:', error);
+                // Fallback to download if share fails
+                await handleDownloadPDF();
             }
         }
     };
@@ -167,6 +242,31 @@ const ViewDocumentPage = ({ documentToView, navigateTo, previousPage }) => {
     };
 
     const handlePrint = () => {
+        // If PDF viewer is open, print the PDF instead of the page
+        if (showPdfViewer && pdfBlobUrl) {
+            // On mobile, especially Android Chrome, opening the PDF in a new tab allows printing
+            if (isMobileDevice()) {
+                handleDownloadPDF(); // This will open PDF in new tab, user can then print from there
+                return;
+            }
+            
+            // On desktop, try to print the iframe content
+            try {
+                const iframe = document.querySelector('iframe[title="Document PDF"]');
+                if (iframe && iframe.contentWindow) {
+                    iframe.contentWindow.print();
+                } else {
+                    // Fallback: open PDF in new window for printing
+                    window.open(pdfBlobUrl, '_blank');
+                }
+            } catch (error) {
+                console.error('Print error:', error);
+                // Fallback: open PDF in new window
+                window.open(pdfBlobUrl, '_blank');
+            }
+            return;
+        }
+
         // Check if iOS and in standalone mode (Add to Home Screen)
         const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
         const isStandalone = window.navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);

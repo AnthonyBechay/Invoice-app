@@ -11,6 +11,7 @@ export const prisma = new PrismaClient({
   // Connection pool configuration
   // These settings help optimize database connections
   // Adjust based on your database provider's recommendations
+  errorFormat: 'pretty',
 });
 
 // Optimize connection pool for better performance
@@ -18,8 +19,17 @@ export const prisma = new PrismaClient({
 // Example: postgresql://user:password@host:port/database?connection_limit=10&pool_timeout=20
 
 // Graceful shutdown
-process.on('beforeExit', async () => {
-  await prisma.$disconnect();
-});
+const gracefulShutdown = async () => {
+  try {
+    await prisma.$disconnect();
+    console.log('Prisma Client disconnected');
+  } catch (error) {
+    console.error('Error disconnecting Prisma Client:', error);
+  }
+};
+
+process.on('beforeExit', gracefulShutdown);
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT', gracefulShutdown);
 
 export default prisma;

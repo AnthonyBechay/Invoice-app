@@ -71,8 +71,16 @@ const corsOptions = {
 // Apply CORS middleware - this handles both preflight and regular requests
 app.use(cors(corsOptions));
 
-// Additional explicit OPTIONS handler as fallback (in case CORS middleware doesn't catch it)
-app.options('*', cors(corsOptions));
+// Handle OPTIONS requests explicitly BEFORE any other middleware
+// This ensures OPTIONS requests never hit auth middleware or cause errors
+app.options('*', (req, res) => {
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Max-Age', '86400');
+  res.sendStatus(200);
+});
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
@@ -85,8 +93,8 @@ const limiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: 'Too many requests from this IP, please try again later.',
-  // Skip rate limiting for health checks
-  skip: (req) => req.path === '/health'
+  // Skip rate limiting for health checks and OPTIONS requests
+  skip: (req) => req.path === '/health' || req.method === 'OPTIONS'
 });
 
 app.use('/api/', limiter);
@@ -105,14 +113,22 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 
 // Protected routes (require authentication)
-app.use('/api/clients', verifyToken, clientsRoutes);
-app.use('/api/suppliers', verifyToken, suppliersRoutes);
-app.use('/api/stock', verifyToken, stockRoutes);
-app.use('/api/documents', verifyToken, documentsRoutes);
-app.use('/api/payments', verifyToken, paymentsRoutes);
-app.use('/api/expenses', verifyToken, expensesRoutes);
-app.use('/api/settings', verifyToken, settingsRoutes);
-app.use('/api/admin', verifyToken, adminRoutes);
+// Skip auth for OPTIONS requests
+const skipAuthForOptions = (req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    return next();
+  }
+  return verifyToken(req, res, next);
+};
+
+app.use('/api/clients', skipAuthForOptions, clientsRoutes);
+app.use('/api/suppliers', skipAuthForOptions, suppliersRoutes);
+app.use('/api/stock', skipAuthForOptions, stockRoutes);
+app.use('/api/documents', skipAuthForOptions, documentsRoutes);
+app.use('/api/payments', skipAuthForOptions, paymentsRoutes);
+app.use('/api/expenses', skipAuthForOptions, expensesRoutes);
+app.use('/api/settings', skipAuthForOptions, settingsRoutes);
+app.use('/api/admin', skipAuthForOptions, adminRoutes);
 
 // 404 handler
 app.use((req, res) => {
@@ -130,8 +146,27 @@ app.listen(PORT, () => {
   console.log(`🔐 JWT authentication enabled`);
 });
 
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (err) => {
-  console.error('Unhandled Promise Rejection:', err);
+// Handle unhandled promise rejections - log but don't crash immediately
+process.on('unhandledRejection', (err, promise) => {
+  console.error('Unhandled Promise Rejection at:', promise, 'reason:', err);
+  // Log the error but don't exit - let the server continue running
+  // The error handler middleware will catch errors in request handlers
+});
+
+// Handle uncaught exceptions - log and exit gracefully
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+  // For uncaught exceptions, we should exit as the process is in an unknown state
   process.exit(1);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received, shutting down gracefully...');
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  console.log('SIGINT received, shutting down gracefully...');
+  process.exit(0);
 });

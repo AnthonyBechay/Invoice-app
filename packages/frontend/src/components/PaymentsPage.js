@@ -737,23 +737,68 @@ const PaymentsPage = ({ navigateTo }) => {
         }
     };
 
-    // Download PDF from viewer
-    const handleDownloadPDF = () => {
-        if (!pdfBlobUrl || !selectedPaymentForView) return;
-
-        const clientName = getClientName(selectedPaymentForView);
-        const receiptNumber = selectedPaymentForView.id.substring(0, 8).toUpperCase();
-        const filename = `Payment-Receipt-${receiptNumber}-${clientName}.pdf`;
-
-        const link = document.createElement('a');
-        link.href = pdfBlobUrl;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+    // Helper to detect mobile device
+    const isMobileDevice = () => {
+        return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     };
 
-    // Share PDF from viewer (mobile)
+    // Download PDF from viewer - improved for mobile browsers
+    const handleDownloadPDF = async () => {
+        if (!pdfBlobUrl || !selectedPaymentForView) return;
+
+        try {
+            const clientName = getClientName(selectedPaymentForView);
+            const receiptNumber = selectedPaymentForView.id.substring(0, 8).toUpperCase();
+            const filename = `Payment-Receipt-${receiptNumber}-${clientName}.pdf`;
+
+            // Fetch the blob
+            const response = await fetch(pdfBlobUrl);
+            const blob = await response.blob();
+
+            // For mobile browsers, especially Android Chrome, use a different approach
+            if (isMobileDevice()) {
+                // Create object URL from blob
+                const url = URL.createObjectURL(blob);
+                
+                // Try to open in new tab/window (Android Chrome can handle this)
+                const newWindow = window.open(url, '_blank');
+                
+                // If popup blocked, fall back to download link
+                if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+                    // Popup blocked, use download link
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = filename;
+                    link.style.display = 'none';
+                    document.body.appendChild(link);
+                    link.click();
+                    
+                    // Clean up after a delay
+                    setTimeout(() => {
+                        document.body.removeChild(link);
+                        URL.revokeObjectURL(url);
+                    }, 100);
+                } else {
+                    // Clean up URL after window opens
+                    setTimeout(() => URL.revokeObjectURL(url), 1000);
+                }
+            } else {
+                // Desktop: use standard download
+                const link = document.createElement('a');
+                link.href = pdfBlobUrl;
+                link.download = filename;
+                link.style.display = 'none';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+        } catch (error) {
+            console.error('Download error:', error);
+            alert('Failed to download PDF. Please try again.');
+        }
+    };
+
+    // Share PDF from viewer (mobile) - improved for Android Chrome
     const handleSharePDF = async () => {
         if (!pdfBlobUrl || !selectedPaymentForView) return;
 
@@ -767,20 +812,50 @@ const PaymentsPage = ({ navigateTo }) => {
             const blob = await response.blob();
             const file = new File([blob], filename, { type: 'application/pdf' });
 
-            // Check if Web Share API is supported
-            if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-                await navigator.share({
-                    title: `Payment Receipt ${receiptNumber}`,
-                    text: `Payment Receipt for ${clientName}`,
-                    files: [file]
-                });
-            } else {
-                // Fallback to download on desktop
-                handleDownloadPDF();
+            // Check if Web Share API is supported (with files)
+            if (navigator.share) {
+                try {
+                    // Try sharing with file first (works on Android Chrome 89+)
+                    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                        await navigator.share({
+                            title: `Payment Receipt ${receiptNumber}`,
+                            text: `Payment Receipt for ${clientName}`,
+                            files: [file]
+                        });
+                        return; // Success, exit
+                    }
+                } catch (shareError) {
+                    // If file sharing fails, try without files (text-only share)
+                    if (shareError.name !== 'AbortError') {
+                        console.log('File sharing not supported, trying text-only share:', shareError);
+                        
+                        // Try text-only share as fallback
+                        try {
+                            await navigator.share({
+                                title: `Payment Receipt ${receiptNumber}`,
+                                text: `Payment Receipt for ${clientName}\n\nOpen the PDF viewer to download the file.`
+                            });
+                            return; // Success with text share
+                        } catch (textShareError) {
+                            if (textShareError.name !== 'AbortError') {
+                                console.log('Text share also failed, falling back to download:', textShareError);
+                            }
+                        }
+                    } else {
+                        // User cancelled, just return
+                        return;
+                    }
+                }
             }
+
+            // Fallback: Use download method (works on all browsers)
+            // On mobile, this will open the PDF in a new tab which users can then save/share
+            await handleDownloadPDF();
         } catch (error) {
             if (error.name !== 'AbortError') {
                 console.error('Share error:', error);
+                // Fallback to download if share fails
+                await handleDownloadPDF();
             }
         }
     };
