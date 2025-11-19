@@ -282,21 +282,45 @@ const DocumentPDF = ({ document, userSettings }) => {
                     </View>
                 )}
 
-                {/* Labor Section */}
-                {document.mandays && document.laborPrice && (
+                {/* Labor Price Section */}
+                {document.laborPrice && document.laborPrice > 0 && (
                     <View style={styles.table}>
                         <View style={styles.tableHeader}>
-                            <Text style={styles.tableCol1}>Labor</Text>
-                            <Text style={styles.tableCol2}>Man-days</Text>
-                            <Text style={styles.tableCol3}>Rate/Day</Text>
+                            <Text style={styles.tableCol1}>Description</Text>
+                            <Text style={styles.tableCol2}>Quantity</Text>
+                            <Text style={styles.tableCol3}>Unit Price</Text>
                             <Text style={styles.tableCol4}>Total</Text>
                         </View>
                         <View style={styles.tableRow}>
-                            <Text style={styles.tableCol1}>Professional Services</Text>
-                            <Text style={styles.tableCol2}>{document.mandays}</Text>
+                            <Text style={styles.tableCol1}>Labor</Text>
+                            <Text style={styles.tableCol2}>1</Text>
                             <Text style={styles.tableCol3}>{formatCurrency(document.laborPrice)}</Text>
                             <Text style={styles.tableCol4}>
-                                {formatCurrency(document.mandays * document.laborPrice)}
+                                {formatCurrency(document.laborPrice)}
+                            </Text>
+                        </View>
+                    </View>
+                )}
+
+                {/* Mandays Section */}
+                {document.mandays && (document.mandays.days > 0 || document.mandays.people > 0) && (
+                    <View style={styles.table}>
+                        <View style={styles.tableHeader}>
+                            <Text style={styles.tableCol1}>Description</Text>
+                            <Text style={styles.tableCol2}>Quantity</Text>
+                            <Text style={styles.tableCol3}>Unit Price</Text>
+                            <Text style={styles.tableCol4}>Total</Text>
+                        </View>
+                        <View style={styles.tableRow}>
+                            <Text style={styles.tableCol1}>
+                                Mandays ({document.mandays.days} days × {document.mandays.people} people × {formatCurrency(document.mandays.costPerDay)}/day)
+                            </Text>
+                            <Text style={styles.tableCol2}>1</Text>
+                            <Text style={styles.tableCol3}>
+                                {formatCurrency(document.mandays.days * document.mandays.people * document.mandays.costPerDay)}
+                            </Text>
+                            <Text style={styles.tableCol4}>
+                                {formatCurrency(document.mandays.days * document.mandays.people * document.mandays.costPerDay)}
                             </Text>
                         </View>
                     </View>
